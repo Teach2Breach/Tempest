@@ -9,7 +9,9 @@ Tempest is a command and control framework written in 100% Rust.
 Because this is a research c2, the project moves at a slower pace and runs into a lot of issues along the way. So please understand that this is why. What I suggest for how to use this project, is to fork it, modify it, make it your own. Even better, write your own from scratch, using this code as a reference. Read the code, learn the particular techniques, the "why" of certain design decisions, and make your own c2. That's really the point and in my opinion, the most effective use of this framework.
 
 ##### Check the 'SetupGuide.md' for quick setup (TODO)
-The setup guide is being rewritten for public release. More documentation is on the way.
+The setup guide is being rewritten for public release.
+For now, the Anvil server has a README that will help you get started standing up the server. With the server built, you 'cargo build --release' conduit, connect to Anvil, and use the build function to build implants. 
+More documentation is on the way.
 
 Now I will provide a bit of a roadmap and current architecture.
 
