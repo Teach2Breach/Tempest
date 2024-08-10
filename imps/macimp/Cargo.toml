@@ -1,0 +1,10 @@
+[package]
+name = "macimp"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+libc = "0.2.155"
+reqwest = { version = "0.11.4", features = ["blocking"] }
+serde_json = "1.0.117"
+serde = { version = "1.0.173", features = ["derive"] }

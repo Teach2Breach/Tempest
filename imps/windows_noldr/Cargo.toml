@@ -1,0 +1,46 @@
+[package]
+name = "windows_noldr"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+path = "src/lib.rs"
+crate-type = ["staticlib", "cdylib"]
+
+[dependencies]
+windows-sys = { version = "0.48.0", features = [
+    "Win32_Networking_WinInet", 
+    "Win32_System_LibraryLoader", 
+    "Win32_Foundation", 
+    "Win32_System_Threading", 
+    "Win32_Networking_WinHttp", 
+    "Win32_System_WindowsProgramming", 
+    "Win32_System_SystemInformation", 
+    "Win32_System_LibraryLoader"] }
+serde = { version = "1.0.173", features = ["derive"] }
+serde_json = "1.0.103"
+litcrypt2 = "0.1.2"
+base64 = "0.21.2"
+# TODO: move coffee-ldr and rustpivotclient to local crates in /modules_wip/ folder
+coffee-ldr = { git = "https://github.com/Teach2Breach/coffee.git", branch = "main" }
+reqwest = { version = "0.11.4", features = ["blocking"] }
+client = { git = "https://github.com/Teach2Breach/rustpivotclient.git", branch = "main" }
+ntapi = "0.4.0"
+winapi = { version = "0.3.9", features = ["processthreadsapi", "errhandlingapi", "psapi"]}
+# TODO: delete this after rustc upgraded.
+proc-macro2 = "1.0.79"
+openssl = { version = "0.10", features = ["vendored"] }
+whoami = { path = "../../modules_wip/whoami" }
+process_list = { path = "../../modules_wip/process_list" }
+noldr = { path = "../../modules_wip/noldr" }
+oxide_ldr = { path = "../../modules_wip/oxide_ldr" }
+wmi = "0.13.3"
+
+[profile.release]
+strip = true  # Automatically strip symbols from the binary.
+opt-level = "z"  # Optimize for size.
+lto = true
+codegen-units = 1
+panic = "abort"

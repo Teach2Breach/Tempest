@@ -1,0 +1,33 @@
+[package]
+name = "anvil"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+actix-web = { version = "4.3.1", features = ["openssl"] }
+openssl = "0.10.55"
+clap = { version = "4.3.5", features = ["derive"] }
+env_logger = "0.10.0"
+rusqlite = {version = "0.29.0", features = ["bundled"]}
+tokio = { version = "1.28.2", features = ["full"] }
+bcrypt = "0.14.0"
+base64 = "0.21.2"
+uuid = { version = "1.4.0", features = ["v4"] }
+serde = { version = "1.0.171", features = ["derive"] }
+chrono = "0.4.26"
+tracing-actix-web = "0.7.5"
+tracing = "0.1.37"
+actix-rt = "2.9.0"
+config = "0.10.1"
+actix-files = "0.6.5"
+dll2shell = { git = "https://github.com/Teach2Breach/dll2shell", branch = "main"}
+serde_json = "1.0.122"
+
+[profile.release]
+strip = true  # Automatically strip symbols from the binary.
+opt-level = "z"  # Optimize for size.
+lto = true
+codegen-units = 1
+panic = "abort"

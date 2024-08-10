@@ -1,0 +1,10 @@
+[[users]]
+username = "forge"
+password = "forge"
+
+[cert]
+private_key = "/path/to/cert/key.pem"
+certificate = "/path/to/cert/cert.pem"
+
+[crypt]
+LITCRYPT_ENCRYPT_KEY = "ageofmachine"
