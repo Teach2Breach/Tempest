@@ -1,4 +1,4 @@
-# impossible
+# macimp
 testing for macOS imps for Tempest
 
 currently broken since adding new encryption/decryption routines to server. will fix asap and put more dev time into evasion for this particular implant.
