@@ -77,6 +77,7 @@ Anybody I missed, please ping me to be added to credits
 - Austin Hudson (ilove2pwn_)
 - Trickster0 (@trickster012)
 - memN0ps (@memN0ps)
+- Kudaes (@_Kudaes_)
 - Postrequest (link)
 - 2vg (Blackcat-rs)
 - TrustedSec && @HackingLZ
