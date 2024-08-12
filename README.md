@@ -80,6 +80,7 @@ Anybody I missed, please ping me to be added to credits
 - Trickster0 (@trickster012)
 - memN0ps (@memN0ps)
 - Kudaes (@_Kudaes_)
+- sinusoid
 - Postrequest (link)
 - 2vg (Blackcat-rs)
 - TrustedSec && @HackingLZ
