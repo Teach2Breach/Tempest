@@ -41,6 +41,7 @@ Now I will provide a bit of a roadmap and current architecture.
    - user friendly
    - cross-platform
    - looks cool to your old hacker friends
+   - scrollable fields (PgUp + PgDn on implants field. Up + Down for output field)
 
 AI modules - TBD
 
