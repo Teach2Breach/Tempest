@@ -65,6 +65,7 @@ AI modules - TBD
 - add a non-default option, to start an http server instead https (anvil for imps), so that the server can just let something like cloudflare handle the TLS and certs
 
 ##### CREDITS (direct code contributions)
+note - the repos used here are forks, because they are modified versions to integrate with Tempest. credit is given to original repo author
 - BOF Loader: https://github.com/Teach2Breach/coffee.git credits: hakaioffsec
 - SOCKS proxy: https://github.com/Teach2Breach/rustpivotclient.git credits: deadjakk
 - Runpe: https://github.com/yamakadi/clroxide credits: yamakadi
