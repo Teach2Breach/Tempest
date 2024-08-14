@@ -47,22 +47,18 @@ AI modules - TBD
 
 ##### Roadmap
 
+- implement kerberos modules
 - harden auth between conduit client and anvil server (SSH key auth over TLS in dev)
 - additional protocols for communications between server and implants (websockets in dev)
 - peer to peer communications for implants over additional protocols
 - enhanced socks proxy and multiplayer sessions handling
 - templated implant builds with modular options
 - evasion for linux and mac implants
-- ~~- Python loader - Using a novel technique, load ANY python script and execute it on the target implant, using a signed and trusted python package.~~ I finished this but I'm not sure of the actual utility. I will likely release it as a seperate library.
-- ~~- lua script loader - load lua script and execute in memory on target implant.~~ same comment as above
 - process injections - 1 custom injection I wrote based on a combination and modification of existing techniques, so far released. more to come.
-- ~~- COFF loader - load and execute COFF or BOFF files~~ opted for 3rd party library. See cofldr module for more information.
-- ~~Chrome browser session hijacker extension~~ this got patched :(
 - custom credential harvesting. *in progress. early PoCs complete. will add*
-- AI support modules
-- proxy. opted for 3rd party library. See socks module for more information.
+- AI support modules (may release as seperate libraries/crates)
 - logging for command and output history (conduit side). 
-- add a non-default option, to start an http server instead https (anvil for imps), so that the server can just let something like cloudflare handle the TLS and certs
+- options for comms and listener start/stop
 
 ##### CREDITS (direct code contributions)
 note - the repos used here are forks, because they are modified versions to integrate with Tempest. credit is given to original repo author
