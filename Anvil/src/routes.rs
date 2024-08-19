@@ -6,7 +6,7 @@ use base64::{
     Engine as _,
 };
 use bcrypt::verify;
-use chrono::{format, prelude::*};
+use chrono::{prelude::*};
 use config::{Config, File as ConfigFile};
 use rusqlite::{params, Connection, Result as SqlResult};
 use serde::Deserialize;
@@ -17,8 +17,6 @@ use tokio::process::Command;
 use tokio::task;
 
 //testing adding encryption for data between server and imps
-use openssl::pkey::PKey;
-use openssl::rsa::Rsa;
 
 //function templates
 /*
@@ -1930,7 +1928,6 @@ fn handle_streams(fstream: &mut TcpStream, bstream: &mut TcpStream) {
 }
 
 //add ability to convert dll to shellcode server side
-use dll2shell::*;
 //this function is used to convert dlls to shellcode. its a hacky way of letting the operator specify a shellcode file without
 //actually having to write custom shellcode ourselves
 pub async fn convert_dll_to_shellcode(path: String) -> Vec<u8> {

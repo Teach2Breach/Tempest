@@ -16,18 +16,13 @@ use tracing_actix_web::{DefaultRootSpanBuilder, RootSpanBuilder};
 mod routes;
 use crate::routes::download_file;
 use config::{Config, File};
-use openssl::rsa::Rsa;
-use openssl::pkey::{PKey, Public, Private};
-use std::fs;
 use std::path::Path;
 use std::io;
 use std::io::Write;
 use std::fs::File as stdFile;
-use std::error::Error as StdError;
-use std::string::FromUtf8Error;
 use base64::{
     alphabet,
-    engine::{self, general_purpose},
+    engine::{self},
     Engine as _,
 };
 
