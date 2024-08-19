@@ -201,7 +201,16 @@ async fn main() -> std::io::Result<()> {
             params![],
         )
         .expect("Failed to create table for unique identifiers");
-    
+
+    //add a default adversary id to the database
+
+    /* 
+        db.execute(
+            "INSERT OR REPLACE INTO unique_identifiers (id) VALUES (?1)",
+            params!["adversary"],
+        )
+        .expect("Failed to insert data");
+    */
     
         // DEV NOTE: removed a default value "adversary" from unique ids. 
         // this is part of moving from testing to public release, so if i broke stuff, check back here
