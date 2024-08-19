@@ -5,7 +5,8 @@ The implant now works again, after adding the encryption/decryption routines. Ho
 
 1. modify the anvil server code to hardcode an entry in the unique_identifiers table, below is an example. If you want to use your own unique id (not adversary), please also change the imp_info.session value in this implant to match.
 
-```        db.execute(
+```        
+db.execute(
             "INSERT OR REPLACE INTO unique_identifiers (id) VALUES (?1)",
             params!["adversary"],
         )
