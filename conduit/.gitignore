@@ -3,3 +3,4 @@ linux
 macimp
 *.exe
 *.bin
+Cargo.lock
