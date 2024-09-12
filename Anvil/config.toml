@@ -8,3 +8,7 @@ certificate = "/path/to/cert/cert.pem"
 
 [crypt]
 LITCRYPT_ENCRYPT_KEY = "ageofmachine"
+
+[server]
+implant_port = 443
+conduit_port = 8443

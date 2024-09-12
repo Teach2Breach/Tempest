@@ -15,16 +15,16 @@ use tracing::Span;
 use tracing_actix_web::{DefaultRootSpanBuilder, RootSpanBuilder};
 mod routes;
 use crate::routes::download_file;
-use config::{Config, File};
-use std::path::Path;
-use std::io;
-use std::io::Write;
-use std::fs::File as stdFile;
 use base64::{
     alphabet,
     engine::{self},
     Engine as _,
 };
+use config::{Config, File};
+use std::fs::File as stdFile;
+use std::io;
+use std::io::Write;
+use std::path::Path;
 
 //logging stuffs
 pub struct CustomLevelRootSpanBuilder;
@@ -97,29 +97,29 @@ async fn main() -> std::io::Result<()> {
     // Setup keys for encryption
     // Setup AES key for encryption
     let aes_key_path = "aes_key.bin";
-    
+
     let aes_key = if Path::new(aes_key_path).exists() {
         // Load existing AES key from file
         load_key_from_file(aes_key_path)?
     } else {
         // Generate new AES key
         let aes_key = generate_aes_key()?;
-        
+
         // Save AES key to file
         save_key_to_file(&aes_key, aes_key_path)?;
-        
+
         aes_key
     };
 
     const CUSTOM_ENGINE: engine::GeneralPurpose =
-    engine::GeneralPurpose::new(&alphabet::URL_SAFE, engine::general_purpose::NO_PAD);
-    
+        engine::GeneralPurpose::new(&alphabet::URL_SAFE, engine::general_purpose::NO_PAD);
+
     // Set the AES key in an environment variable
     let encoded_aes_key = CUSTOM_ENGINE.encode(&aes_key);
     std::env::set_var("AES_KEY", encoded_aes_key.clone());
     println!("AES key generated and stored.");
     println!("encoded AES key: {}", encoded_aes_key);
-    
+
     println!("AES key generated and stored.");
 
     // Create ssl builder
@@ -197,17 +197,17 @@ async fn main() -> std::io::Result<()> {
         )
         .expect("Failed to create table for unique identifiers");
 
-    //add a default adversary id to the database
+        //add a default adversary id to the database
 
-    /* 
-        db.execute(
-            "INSERT OR REPLACE INTO unique_identifiers (id) VALUES (?1)",
-            params!["adversary"],
-        )
-        .expect("Failed to insert data");
-    */
-    
-        // DEV NOTE: removed a default value "adversary" from unique ids. 
+        /*
+            db.execute(
+                "INSERT OR REPLACE INTO unique_identifiers (id) VALUES (?1)",
+                params!["adversary"],
+            )
+            .expect("Failed to insert data");
+        */
+
+        // DEV NOTE: removed a default value "adversary" from unique ids.
         // this is part of moving from testing to public release, so if i broke stuff, check back here
 
         // Create a table for Imps to be logged post check-in
@@ -241,13 +241,13 @@ async fn main() -> std::io::Result<()> {
         //TESTING: removing from public release. check back if broke
 
         /*
-        // insert a token to be used for testing
-        db.execute(
-            "INSERT OR REPLACE INTO tokens (token) VALUES (?1)",
-            params!["test_token"],
-        )
-        .expect("Failed to insert token");
-*/
+                // insert a token to be used for testing
+                db.execute(
+                    "INSERT OR REPLACE INTO tokens (token) VALUES (?1)",
+                    params!["test_token"],
+                )
+                .expect("Failed to insert token");
+        */
         //END TESTING
 
         // Create table for tasks
@@ -289,9 +289,24 @@ async fn main() -> std::io::Result<()> {
     //placing imports here during testing
     use std::thread;
     //use actix_rt::System;
+    
+    /*
+    let mut settings = Config::default();
+    settings
+        .merge(File::with_name("config"))
+        .expect("Failed to open configuration file");
+    */
+
+    // Add these lines to read the port numbers
+    let implant_port: u16 = settings
+        .get("server.implant_port")
+        .expect("Failed to get implant_port from config");
+    let conduit_port: u16 = settings
+        .get("server.conduit_port")
+        .expect("Failed to get conduit_port from config");
 
     // server for port 443
-    let server_443 = thread::spawn(move || {
+    let implant_server = thread::spawn(move || {
         let sys = actix_rt::System::new;
         let srv = HttpServer::new(move || {
             let logger = Logger::default(); // Use the default actix_web logger
@@ -304,7 +319,7 @@ async fn main() -> std::io::Result<()> {
                 .route("/download", web::get().to(download_file)); //needs auth tested
             app
         })
-        .bind_openssl("0.0.0.0:443", builder_443)?
+        .bind_openssl(format!("0.0.0.0:{}", implant_port), builder_443)?
         .run();
         sys().block_on(srv)
     });
@@ -313,7 +328,7 @@ async fn main() -> std::io::Result<()> {
     //let builder_8443 = builder.clone();
 
     //server for port 8443
-    let server_8443 = thread::spawn(move || {
+    let conduit_server = thread::spawn(move || {
         let sys = actix_rt::System::new;
         let srv = HttpServer::new(move || {
             let logger = Logger::default(); // Use the default actix_web logger
@@ -333,13 +348,13 @@ async fn main() -> std::io::Result<()> {
                 .route("/bofload", web::post().to(routes::receive_chunk)); //needs auth tested
             app
         })
-        .bind_openssl("0.0.0.0:8443", builder_8443)?
+        .bind_openssl(format!("0.0.0.0:{}", conduit_port), builder_8443)?
         .run();
         sys().block_on(srv)
     });
 
-    let _ = server_443.join().unwrap()?;
-    let _ = server_8443.join().unwrap()?;
+    let _ = implant_server.join().unwrap()?;
+    let _ = conduit_server.join().unwrap()?;
 
     Ok(())
 }
@@ -354,7 +369,7 @@ fn save_key_to_file(key: &[u8], path: &str) -> io::Result<()> {
     Ok(())
 }
 
-fn generate_aes_key() -> io:: Result<Vec<u8>> {
+fn generate_aes_key() -> io::Result<Vec<u8>> {
     let mut aes_key = vec![0; 32]; // 256-bit key for AES-256
     rand_bytes(&mut aes_key).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
     Ok(aes_key)
