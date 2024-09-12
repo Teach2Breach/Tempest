@@ -1,3 +1,7 @@
+#### 09.12.2024
+ - made ports configurable in config.toml for both server. The implants were always built with taking user input for callback port, as this change was planned, so now operators have full control over the ports used by the server and implants.
+ - I have not changed the port in the conduit client, so it still defaults to 8443. I'll modify the conduit client to allow the server port to be configurable in the upcoming commits.
+
 #### 08.21.2024
 - todo: add an option to our main session (main screen) to add a UID to our db for implants built locally (not using anvil server). in this way, we can add arbitrary unique identifiers to our database with the server already running. this will reduce friction for operators who want to use the mac implant or want to build any implants without the server build function.
 - mac implant has encryption routines added and can now once again work with our server. see macimp readme for building locally
