@@ -1,4 +1,9 @@
 #### 09.12.2024
+- added an experimental python implant to the repo. this is a proof of concept for a python based implant, which can be used to test api consistency and different functions between python and other implants.
+- I'll document the python implant in a bit more detail in the readme.md file for the repo soon.
+- It's built using gpt01-mini as an experiment.
+
+#### 09.12.2024
  - made ports configurable in config.toml for both server. The implants were always built with taking user input for callback port, as this change was planned, so now operators have full control over the ports used by the server and implants.
  - I have not changed the port in the conduit client, so it still defaults to 8443. I'll modify the conduit client to allow the server port to be configurable in the upcoming commits.
 
