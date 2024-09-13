@@ -1,3 +1,6 @@
+#### 09.13.2024
+- added an experimental c implant. its not done.
+
 #### 09.12.2024
 - added an experimental python implant to the repo. this is a proof of concept for a python based implant, which can be used to test api consistency and different functions between python and other implants.
 - I'll document the python implant in a bit more detail in the readme.md file for the repo soon.
