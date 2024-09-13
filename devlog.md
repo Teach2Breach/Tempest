@@ -1,4 +1,7 @@
 #### 09.13.2024
+- added another experimental implant, this one is in rust and using dinvoke_rs. its under early dev.
+
+#### 09.13.2024
 - added an experimental c implant. its not done.
 
 #### 09.12.2024

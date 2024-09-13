@@ -1,6 +1,6 @@
 #![allow(dead_code)] 
 mod proto;
-//mod func;
+mod func;
 #[macro_use]
 extern crate litcrypt2;
  
