@@ -30,26 +30,36 @@ pub fn run_wmi_query(query_parts: Vec<&str>) -> String {
         for (key, value) in result {
             let value_str = match value {
                 Variant::String(s) => s.clone(),
+                Variant::UI1(u) => u.to_string(),
+                Variant::UI2(u) => u.to_string(),
                 Variant::UI4(u) => u.to_string(),
+                Variant::UI8(u) => u.to_string(),
+                Variant::I1(i) => i.to_string(),
+                Variant::I2(i) => i.to_string(),
                 Variant::I4(i) => i.to_string(),
+                Variant::I8(i) => i.to_string(),
+                Variant::R4(f) => f.to_string(),
+                Variant::R8(f) => f.to_string(),
                 Variant::Bool(b) => b.to_string(),
                 Variant::Array(arr) => arr.iter().map(|v| match v {
                     Variant::String(vs) => vs.clone(),
+                    Variant::UI1(u) => u.to_string(),
+                    Variant::UI2(u) => u.to_string(),
                     Variant::UI4(u) => u.to_string(),
-                    Variant::I4(i) => i.to_string(),
-                    Variant::Bool(b) => b.to_string(),
                     Variant::UI8(u) => u.to_string(),
+                    Variant::I1(i) => i.to_string(),
+                    Variant::I2(i) => i.to_string(),
+                    Variant::I4(i) => i.to_string(),
                     Variant::I8(i) => i.to_string(),
-                    // Removed Float, Double, Binary, DateTime from here
+                    Variant::R4(f) => f.to_string(),
+                    Variant::R8(f) => f.to_string(),
+                    Variant::Bool(b) => b.to_string(),
                     Variant::Null => "null".to_string(),
                     _ => "Unsupported Variant type in array".to_string(),
                 }).collect::<Vec<_>>().join(", "),
-                Variant::UI8(u) => u.to_string(),
-                Variant::I8(i) => i.to_string(),
-                // Removed Float, Double, Binary, DateTime from here
-                _ => "Unsupported Variant type".to_string(),
+                Variant::Null => "null".to_string(),
+                _ => format!("{:?}", value),  // Use debug formatting for other variants
             };
-            //println!("{}: {}", key, value_str);
             output.push(format!("{}: {}", key, value_str));
         }
     }

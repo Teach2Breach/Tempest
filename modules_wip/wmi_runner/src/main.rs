@@ -9,10 +9,37 @@ fn main() {
 
     // Define predefined queries
     let predefined_queries: Vec<(&str, &str)> = vec![
-        ("1", "SELECT * FROM Win32_Group"),
-        ("2", "SELECT Name, ProcessId FROM Win32_Process"),
-        ("3", "SELECT Caption, FreeSpace, Size FROM Win32_LogicalDisk"),
-        // Add more predefined queries as needed
+        // System Information
+        ("1", "SELECT Caption, Version, BuildNumber, OSArchitecture FROM Win32_OperatingSystem"),
+        ("2", "SELECT Manufacturer, Model, TotalPhysicalMemory FROM Win32_ComputerSystem"),
+        ("3", "SELECT Name, Manufacturer, SerialNumber FROM Win32_BIOS"),
+        ("4", "SELECT * FROM Win32_TimeZone"),
+        
+        // Hardware Information
+        ("5", "SELECT Caption, DeviceID, Size FROM Win32_DiskDrive"),
+        ("6", "SELECT Caption, FreeSpace, Size FROM Win32_LogicalDisk"),
+        ("7", "SELECT Name, VideoProcessor, AdapterRAM FROM Win32_VideoController"),
+        ("8", "SELECT Name, Manufacturer, MaxClockSpeed, NumberOfCores FROM Win32_Processor"),
+        
+        // Network Information
+        ("9", "SELECT IPAddress, MACAddress, DHCPEnabled FROM Win32_NetworkAdapterConfiguration WHERE IPEnabled=True"),
+        ("10", "SELECT * FROM Win32_NetworkAdapter WHERE NetEnabled=True"),
+        ("11", "SELECT * FROM Win32_NetworkLoginProfile"),
+        
+        // User and Group Information
+        ("12", "SELECT * FROM Win32_UserAccount"),
+        ("13", "SELECT * FROM Win32_Group"),
+        ("14", "SELECT * FROM Win32_GroupUser"),
+        
+        // Software and Process Information
+        ("15", "SELECT Name, Version, Vendor FROM Win32_Product"),
+        ("16", "SELECT Name, ExecutablePath, ProcessId FROM Win32_Process"),
+        ("17", "SELECT * FROM Win32_Service"),
+        
+        // Security and Event Information
+        ("18", "SELECT * FROM Win32_LoggedOnUser"),
+        ("19", "SELECT * FROM Win32_QuickFixEngineering"),  // Installed updates/patches
+        ("20", "SELECT * FROM Win32_StartupCommand")
     ];
 
     // Function to print available predefined queries
