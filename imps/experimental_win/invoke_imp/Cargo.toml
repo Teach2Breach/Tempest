@@ -14,7 +14,8 @@ litcrypt2 = "0.1.2"
 serde = { version = "1.0.173", features = ["derive"] }
 ntapi = "0.4.0"
 winapi = { version = "0.3.9", features = ["processthreadsapi", "errhandlingapi", "psapi"]}
-whoami = { path = "../../../modules_wip/whoami" }
+wmi = "0.13.3"
+
 
 [profile.release]
 strip = true  # Automatically strip symbols from the binary.
