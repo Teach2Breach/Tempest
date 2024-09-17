@@ -422,3 +422,31 @@ pub fn get_process_name(module_name: usize) -> String {
         process_name.to_string()
 
 } //get_process_name
+
+pub fn get_system_domain() -> String {
+    let query = "SELECT Domain FROM Win32_ComputerSystem";
+    let com_con = match COMLibrary::new() {
+        Ok(con) => con,
+        Err(_) => return "Error initializing COM Library".to_string(),
+    };
+
+    let wmi_con = match WMIConnection::new(com_con.into()) {
+        Ok(con) => con,
+        Err(_) => return "Error connecting to WMI".to_string(),
+    };
+
+    let results: Vec<HashMap<String, Variant>> = match wmi_con.raw_query(query) {
+        Ok(results) => results,
+        Err(_) => return "Error executing WMI query".to_string(),
+    };
+
+    if let Some(result) = results.first() {
+        if let Some(Variant::String(domain)) = result.get("Domain") {
+            domain.clone()
+        } else {
+            "Unknown domain".to_string()
+        }
+    } else {
+        "Unknown domain".to_string()
+    }
+}

@@ -62,5 +62,8 @@ pub extern "system" fn Pick() {
 
     //call the get_process_name fn and print the string
     println!("process name: {}", func::get_process_name(kernel32));
+
+    //call the get_system_domain fn and print the string
+    println!("domain: {}", func::get_system_domain());
     
 }
