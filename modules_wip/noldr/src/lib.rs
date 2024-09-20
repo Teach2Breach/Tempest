@@ -1,3 +1,6 @@
+//allow unused assignments
+#![allow(unused_assignments)]
+
 use windows::Win32::System::Diagnostics::Debug::IMAGE_NT_HEADERS64;
 use windows::Win32::System::SystemServices::IMAGE_DOS_HEADER;
 use windows::Win32::System::SystemServices::IMAGE_EXPORT_DIRECTORY;
@@ -47,9 +50,6 @@ pub fn get_teb() -> *const TEB {
     }
     teb
 }
-
-use std::os::raw::{c_long, c_ulong};
-use std::ptr::null_mut;
 
 type HANDLE = *mut c_void;
 
@@ -132,7 +132,7 @@ pub fn get_function_address(ntdll_base: *const c_void, function_name: &str) -> O
 }
 
 // Function to get the current process handle
-pub fn get_current_process_handle(peb: *const PEB) -> HANDLE {
+pub fn get_current_process_handle(_peb: *const PEB) -> HANDLE {
     // NtCurrentProcess is a pseudo-handle that always represents the current process.
     // It's a special constant that doesn't need to be closed.
     const NT_CURRENT_PROCESS: HANDLE = -1isize as HANDLE;

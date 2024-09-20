@@ -1,13 +1,13 @@
-use std::arch::asm;
-use std::ffi::c_void;
-use std::os::raw::{c_long, c_ulong};
-use std::ptr::null_mut;
-use windows::Win32::System::Threading::{PEB, TEB};
+//use std::arch::asm;
+//use std::ffi::c_void;
+//use std::os::raw::{c_long, c_ulong};
+//use std::ptr::null_mut;
+//use windows::Win32::System::Threading::{PEB, TEB};
 
 use noldr::{get_dll_address, list_all_dlls};
-use noldr::get_function_address;
+//use noldr::get_function_address;
 use noldr::get_teb;
-use noldr::get_current_process_handle;
+//use noldr::get_current_process_handle;
 
 
 //println!("Hello, world!");
@@ -49,7 +49,7 @@ to get a pointer to the TEB, which we can use to get a pointer to the PEB. */
 // For this proof of concept, we will call NtCreateProcess and launch calculator
 
 // The first step is to get the TEB by calling NtCurrentTEB
-
+/* 
 #[macro_use]
 extern crate memoffset;
 
@@ -58,7 +58,8 @@ macro_rules! container_of {
         (($ptr as usize) - offset_of!($type, $field)) as *const $type
     }};
 }
-
+*/
+/* 
 type PHANDLE = *mut HANDLE;
 type ACCESS_MASK = u32;
 type POBJECT_ATTRIBUTES = *mut c_void;
@@ -76,7 +77,7 @@ type NtCreateProcessType = unsafe extern "system" fn(
     DebugPort: HANDLE,
     ExceptionPort: HANDLE,
 ) -> NTSTATUS;
-
+*/
 fn main() {
 
     //gather command line arguments into an array
