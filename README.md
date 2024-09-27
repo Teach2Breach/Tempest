@@ -6,7 +6,8 @@ Tempest is a command and control framework written in 100% Rust.
 
 blog post: https://teach2breach.io/tempest-intro/ <BR>
 slides: https://teach2breach.io/defcon/TEMPEST.pptx  <BR>
-virtual talk: @teach2breach (add link when live) <BR>
+virtual talk (youtube): https://www.youtube.com/watch?v=t5MSLPRNXMY <BR>
+virtual talk on X: https://x.com/Teach2Breach/status/1826307718690320692/video/1 <BR>
 
 *For the latest updates and coming update news, see the devlog.md in this repo*
 
