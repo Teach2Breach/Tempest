@@ -19,7 +19,7 @@ strip = true        # Automatically strip symbols from the binary.
 [dependencies]
 ntapi = "0.4.0"
 winapi = "0.3.9"
-litcrypt2 = "0.1.2"
+litcrypt = "0.3.0"
 clroxide = "1.1.1"
 # clroxide = { version = "1.1.1", default-features = false }
 noldr = { path = "../noldr" }

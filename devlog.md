@@ -1,3 +1,8 @@
+#### 09.27.2024
+- got a bug report from a test that the windows implant was not compiling due to issues with litcrypt2 in the whoami module. "fixed" it by falling back to original litcrypt. see issue for more details.
+- TODO: implement API hashing in builds to remove most litcrypt usage. investigate or create a solution for string encryption on values other than APIs.
+- TODO: quality of life updates are behind, will catch up this weekend.
+
 #### 09.13.2024
 - looking at the wmi_runner module. I think I'm going to add a module for each of the different types of execution methods. I think it'll be easier to manage this way, and it'll be easier to add new methods later on.
 - Additionally, I noticed in the ImpInfo struct the domain field is redundant, as its already collected and displayed in the username field. I'll remove it from the struct and update the display. I should replace it with the hostname really, but I'll have to do some testing to make sure the domain is always present.

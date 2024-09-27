@@ -17,7 +17,7 @@ use winapi::um::winnt::{
 const STATUS_SUCCESS: NTSTATUS = 0;
 
 #[macro_use]
-extern crate litcrypt2;
+extern crate litcrypt;
 
 use_litcrypt!("ageofmachine");
 

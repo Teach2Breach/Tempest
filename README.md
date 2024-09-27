@@ -14,6 +14,10 @@ virtual talk: @teach2breach (add link when live) <BR>
 
 Because this is a research c2, the project moves at a slower pace and runs into a lot of issues along the way. So please understand that this is why. What I suggest for how to use this project, is to fork it, modify it, make it your own. Even better, write your own from scratch, using this code as a reference. Read the code, learn the particular techniques, the "why" of certain design decisions, and make your own c2. That's really the point and in my opinion, the most effective use of this framework.
 
+##### known issues
+- sometimes the conduit client will not display output from the implants. I am working on a fix for this, but in the meantime, if you are not getting output, try restarting your conduit client. Upon reconnecting, it should display all the output from the previous session.
+- see the devlog for more details on current issues and features in development
+
 ##### Check the 'SetupGuide.md' for quick setup (TODO)
 The setup guide is being rewritten for public release.
 For now, the Anvil server has a README that will help you get started standing up the server. With the server built, you 'cargo build --release' conduit, connect to Anvil, and use the build function to build implants. 

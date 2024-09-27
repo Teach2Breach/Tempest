@@ -2,7 +2,7 @@ use clroxide::clr::Clr;
 use std::fs;
 
 #[macro_use]
-extern crate litcrypt2;
+extern crate litcrypt;
 
 use_litcrypt!("ageofmachine");
 

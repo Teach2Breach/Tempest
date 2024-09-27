@@ -2,7 +2,7 @@
 mod proto;
 mod func;
 #[macro_use]
-extern crate litcrypt2;
+extern crate litcrypt;
  
 use_litcrypt!();
 
