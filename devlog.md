@@ -1,3 +1,6 @@
+#### 10.06.2024
+- added a dev branch. I'll be adding new features to the dev branch from here on out and merging into main periodically. going to prioritize backlog of updates this week.
+
 #### 09.27.2024
 - got a bug report from a test that the windows implant was not compiling due to issues with litcrypt2 in the whoami module. "fixed" it by falling back to original litcrypt. see issue for more details.
 - TODO: implement API hashing in builds to remove most litcrypt usage. investigate or create a solution for string encryption on values other than APIs.
