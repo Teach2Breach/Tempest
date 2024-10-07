@@ -495,7 +495,7 @@ async fn get_input(
 
     // Draw the initial UI
     terminal.draw(|f| ui(f, &app))?;
-    
+
     loop {
         match event::read()? {
             Event::Key(key_event) => match key_event.code {
@@ -808,7 +808,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 app.url.clone(),
                 token.clone(),
                 tx,
-                ui_refresh_tx.clone()
+                ui_refresh_tx.clone(),
             ));
 
             // handle input task
@@ -842,116 +842,123 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
             loop {
                 tokio::select! {
-                                    Some(key_event) = input_rx.recv() => {
-                                        match app.mode {
-                                            AppMode::MainDashboard => {
-                                                match key_event.code {
-                                                    KeyCode::Char(c) => {
-                                                        app.command_text.push(c);
-                                                    }
-                                                    KeyCode::Enter => {
-                                                        let command_text = app.command_text.clone();  // Clone the command_text
-                                                        //clone token for use in the handle_command function
-                                                        let token_clone = token.clone();
-                                                        let command_string = handle_command(&command_text, &imp_info, &mut app, &token_clone).await;
-                                                        app.command_output = VecDeque::from(vec![command_string]);
-                                                        app.command_text.clear();
-                                                    },
-                                                    KeyCode::Backspace => {
-                                                        app.command_text.pop();
-                                                    },
-                                                    KeyCode::PageDown => {
-                                                        if app.imp_scroll_position < imp_info.len().saturating_sub(1) {
-                                                            app.imp_scroll_position += 1;
-                                                        }
-                                                    },
-                                                    KeyCode::PageUp => {
-                                                        if app.imp_scroll_position > 0 {
-                                                            app.imp_scroll_position -= 1;
-                                                        }
-                                                    },
-                                                    KeyCode::Down => {
-                                                        if app.output_scroll_position < app.command_output.len().saturating_sub(1) {
-                                                            app.output_scroll_position += 1;
-                                                        }
-                                                    },
-                                                    KeyCode::Up => {
-                                                        if app.output_scroll_position > 0 {
-                                                            app.output_scroll_position -= 1;
-                                                        }
-                                                    },
-                                                    _ => {}
-                                                }
-                                            },
-                                            AppMode::SessionInteraction(ref session_id, ref sleep) => {
-                                                let session_id_clone = session_id.clone();  // Clone the session_id
-                                                //perhaps here we can check the session_id and see what the OS is and then pass that to the handle_session_command function
-                                                //I think we should be able to get the OS from the imp_info vector
-
-                                                let os_version = imp_info.iter().find(|imp| imp.session == session_id_clone).unwrap().os.clone();
-
-                                                let sleep_clone = sleep.clone();
-                                                match key_event.code {
-                                                    KeyCode::Char(c) => {
-                                                        app.command_text.push(c);
-                                                    }
-                                                    KeyCode::Enter => {
-                                                        let command_text = app.command_text.clone(); // Clone the command_text
-                                                        let token_clone = token.clone(); // Clone the token
-                                                        let url_clone = app.url.clone(); // Clone the url
-                                                        let command_string = handle_session_command(&command_text, &session_id_clone, &mut app, &token_clone, &url_clone, &sleep_clone, &os_version).await;
-
-                                                        // Clear the command_output before adding new lines
-                                                        app.command_output.clear();
-
-                                                        // Split the command_string into lines and add each line to the command_output
-                                                        for line in command_string.lines() {
-                                                            app.command_output.push_back(line.to_string());
-                                                        }
-
-                                                        app.command_text.clear();
-                                                    },
-                                                    KeyCode::Backspace => {
-                                                        app.command_text.pop();
-                                                    },
-                                                    KeyCode::PageDown => {
-                                                        if app.imp_scroll_position < imp_info.len().saturating_sub(1) {
-                                                            app.imp_scroll_position += 1;
-                                                        }
-                                                    },
-                                                    KeyCode::PageUp => {
-                                                        if app.imp_scroll_position > 0 {
-                                                            app.imp_scroll_position -= 1;
-                                                        }
-                                                    },
-                                                    KeyCode::Down => {
-                                                        if app.output_scroll_position < app.command_output.len().saturating_sub(1) {
-                                                            app.output_scroll_position += 1;
-                                                        }
-                                                    },
-                                                    KeyCode::Up => {
-                                                        if app.output_scroll_position > 0 {
-                                                            app.output_scroll_position -= 1;
-                                                        }
-                                                    },
-                                                    _ => {}
-                                                }
-                                            }
+                        Some(key_event) = input_rx.recv() => {
+                            match app.mode {
+                                AppMode::MainDashboard => {
+                                    match key_event.code {
+                                        KeyCode::Char(c) => {
+                                            app.command_text.push(c);
                                         }
-                                        terminal.draw(|f| draw_dashboard(f, f.size(), &imp_info, &mut app))?;
-                                    },
-                                    Some(info) = rx.recv() => {
-                                        imp_info = info;
-                                        terminal.draw(|f| draw_dashboard(f, f.size(), &imp_info, &mut app))?;
-                                    },
-                                    // Listen for UI refresh signals
-                                    Some(new_output) = ui_refresh_rx.recv() => {
-                                        //println!("Received message from ui_refresh_rx");
+                                        KeyCode::Enter => {
+                                            let command_text = app.command_text.clone();  // Clone the command_text
+                                            //clone token for use in the handle_command function
+                                            let token_clone = token.clone();
+                                            let command_string = handle_command(&command_text, &imp_info, &mut app, &token_clone).await;
+                                            app.command_output = VecDeque::from(vec![command_string]);
+                                            app.command_text.clear();
+                                        },
+                                        KeyCode::Backspace => {
+                                            app.command_text.pop();
+                                        },
+                                        KeyCode::PageDown => {
+                                            if app.imp_scroll_position < imp_info.len().saturating_sub(1) {
+                                                app.imp_scroll_position += 1;
+                                            }
+                                        },
+                                        KeyCode::PageUp => {
+                                            if app.imp_scroll_position > 0 {
+                                                app.imp_scroll_position -= 1;
+                                            }
+                                        },
+                                        KeyCode::Down => {
+                                            if app.output_scroll_position < app.command_output.len().saturating_sub(1) {
+                                                app.output_scroll_position += 1;
+                                            }
+                                        },
+                                        KeyCode::Up => {
+                                            if app.output_scroll_position > 0 {
+                                                app.output_scroll_position -= 1;
+                                            }
+                                        },
+                                        _ => {}
+                                    }
+                                },
+                                AppMode::SessionInteraction(ref session_id, ref sleep) => {
+                                    let session_id_clone = session_id.clone();  // Clone the session_id
+                                    //perhaps here we can check the session_id and see what the OS is and then pass that to the handle_session_command function
+                                    //I think we should be able to get the OS from the imp_info vector
 
-                                        app.add_output(new_output); // Update the command_output with new data
-                                    terminal.draw(|f| draw_dashboard(f, f.size(), &imp_info, &mut app))?;
-                            }
+                                    let os_version = imp_info.iter().find(|imp| imp.session == session_id_clone).unwrap().os.clone();
+
+                                    let sleep_clone = sleep.clone();
+                                    match key_event.code {
+                                        KeyCode::Char(c) => {
+                                            app.command_text.push(c);
+                                        }
+                                        KeyCode::Enter => {
+                                            let command_text = app.command_text.clone(); // Clone the command_text
+                                            let token_clone = token.clone(); // Clone the token
+                                            let url_clone = app.url.clone(); // Clone the url
+                                            let command_string = handle_session_command(&command_text, &session_id_clone, &mut app, &token_clone, &url_clone, &sleep_clone, &os_version).await;
+
+                                            // Clear the command_output before adding new lines
+                                            app.command_output.clear();
+
+                                            // Split the command_string into lines and add each line to the command_output
+                                            for line in command_string.lines() {
+                                                app.command_output.push_back(line.to_string());
+                                            }
+
+                                            app.command_text.clear();
+                                        },
+                                        KeyCode::Backspace => {
+                                            app.command_text.pop();
+                                        },
+                                        KeyCode::F(1) => {
+                                            // Force refresh logic
+                                            imp_info.clear();
+                                            // Re-fetch all data from the server
+                                            terminal.clear()?;
+                                            terminal.draw(|f| draw_dashboard(f, f.size(), &imp_info, &mut app))?;
+                                        },
+                                        KeyCode::PageDown => {
+                                            if app.imp_scroll_position < imp_info.len().saturating_sub(1) {
+                                                app.imp_scroll_position += 1;
+                                            }
+                                        },
+                                        KeyCode::PageUp => {
+                                            if app.imp_scroll_position > 0 {
+                                                app.imp_scroll_position -= 1;
+                                            }
+                                        },
+                                        KeyCode::Down => {
+                                            if app.output_scroll_position < app.command_output.len().saturating_sub(1) {
+                                                app.output_scroll_position += 1;
+                                            }
+                                        },
+                                        KeyCode::Up => {
+                                            if app.output_scroll_position > 0 {
+                                                app.output_scroll_position -= 1;
+                                            }
+                                        },
+                                        _ => {}
+                                    }
                                 }
+                            }
+                            terminal.draw(|f| draw_dashboard(f, f.size(), &imp_info, &mut app))?;
+                        },
+                        Some(info) = rx.recv() => {
+                            imp_info = info;
+                            terminal.draw(|f| draw_dashboard(f, f.size(), &imp_info, &mut app))?;
+                        },
+                        // Listen for UI refresh signals
+                        Some(new_output) = ui_refresh_rx.recv() => {
+                            //println!("Received message from ui_refresh_rx");
+
+                            app.add_output(new_output); // Update the command_output with new data
+                        terminal.draw(|f| draw_dashboard(f, f.size(), &imp_info, &mut app))?;
+                }
+                    }
             }
         }
 
@@ -969,7 +976,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 use tokio::sync::mpsc::Sender;
 
-async fn fetch_imp_info_periodically(url: String, token: String, tx: Sender<Vec<ImpInfo>>, ui_refresh_tx: Sender<String>) {
+async fn fetch_imp_info_periodically(
+    url: String,
+    token: String,
+    tx: Sender<Vec<ImpInfo>>,
+    ui_refresh_tx: Sender<String>,
+) {
     let mut interval = interval(Duration::from_secs(1));
     let mut error_sent = false; // Flag to track if an error message has been sent
 
@@ -986,7 +998,7 @@ async fn fetch_imp_info_periodically(url: String, token: String, tx: Sender<Vec<
                     }
                 }
                 error_sent = false; // Reset the flag when connection is successful
-                // Store the fetched information into the shared state
+                                    // Store the fetched information into the shared state
                 if tx.send(imp_info).await.is_err() {
                     eprintln!("Receiver has been dropped!");
                     break;
@@ -1128,6 +1140,10 @@ where
                     Color::White
                 };
 
+                // Format the last_check_in_time for display
+                let last_check_in_display =
+                    last_check_in_time.format("%Y-%m-%d %H:%M:%S").to_string();
+
                 Row::new(vec![
                     //Cell::from(Span::styled(info.session.clone(), Style::default().fg(color))),
                     Cell::from(Span::styled(
@@ -1158,7 +1174,7 @@ where
                     )),
                     Cell::from(Span::styled(info.sleep.clone(), Style::default().fg(color))),
                     Cell::from(Span::styled(
-                        info.last_check_in.clone(),
+                        last_check_in_display.clone(),
                         Style::default().fg(color),
                     )),
                 ])

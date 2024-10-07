@@ -1,3 +1,6 @@
+#### 10.07.2024
+- added a config file to the conduit client. this allows the server port to be configurable.
+
 #### 10.06.2024
 - added a dev branch. I'll be adding new features to the dev branch from here on out and merging into main periodically. going to prioritize backlog of updates this week.
 
