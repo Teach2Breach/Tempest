@@ -28,6 +28,8 @@ use tui::{
     Terminal,
 };
 
+use config::{Config, File};
+
 #[derive(Deserialize, Debug, Clone, PartialEq)]
 pub struct ImpInfo {
     session: String,
@@ -444,7 +446,7 @@ async fn handle_session_command(
 }
 
 async fn issue_task(command_text: &str, session_id: &str, token: &str, url: &str) -> String {
-    let url = format!("https://{}:8443/issue_task", url);
+    let url = format!("https://{}/issue_task", url);
 
     let client = match ClientBuilder::new()
         .danger_accept_invalid_certs(true)
@@ -486,8 +488,14 @@ async fn get_input(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     app: &mut App,
 ) -> Result<String, Box<dyn Error>> {
-        // Draw the initial UI
-        terminal.draw(|f| ui(f, &app))?;
+    // Load the configuration
+    let mut settings = Config::default();
+    settings.merge(File::with_name("config"))?;
+    let server_port: u16 = settings.get("server.port")?;
+
+    // Draw the initial UI
+    terminal.draw(|f| ui(f, &app))?;
+    
     loop {
         match event::read()? {
             Event::Key(key_event) => match key_event.code {
@@ -495,6 +503,10 @@ async fn get_input(
                     InputMode::Url => {
                         if app.url.is_empty() {
                             continue;
+                        }
+                        // Append the port to the URL
+                        if !app.url.contains(':') {
+                            app.url = format!("{}:{}", app.url, server_port);
                         }
                         app.input_mode = InputMode::Username;
                     }
@@ -613,7 +625,7 @@ fn ui(f: &mut tui::Frame<tui::backend::CrosstermBackend<io::Stdout>>, app: &App)
 }
 
 async fn authenticate(url: &str, username: &str, password: &str) -> Result<String, Box<dyn Error>> {
-    let url = format!("https://{}:8443/authenticate", url);
+    let url = format!("https://{}/authenticate", url);
 
     let client = ClientBuilder::new()
         .danger_accept_invalid_certs(true)
@@ -999,8 +1011,8 @@ async fn fetch_imp_info(
     token: &str,
 ) -> Result<Vec<ImpInfo>, Box<dyn Error + Send + Sync>> {
     //setup the url
-    //let url = format!("https://{}:8443:8080/imps", url);
-    let url = format!("https://{}:8443/imps", url);
+    //let url = format!("https://{}:8080/imps", url);
+    let url = format!("https://{}/imps", url);
 
     let client = ClientBuilder::new()
         .danger_accept_invalid_certs(true)

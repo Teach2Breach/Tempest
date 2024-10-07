@@ -98,7 +98,7 @@ pub async fn retrieve_all_output(
     token: &str,
     url: &str,
 ) -> Result<Option<String>, Box<dyn Error + Send>> {
-    let url = format!("https://{}:8443/retrieve_all_out", url);
+    let url = format!("https://{}/retrieve_all_out", url);
     //println!("task_name: {}", task_name);
     //println!("imp_token: {}", session_id);
     //println!("token: {}", token);
@@ -213,7 +213,7 @@ pub async fn build(
     format: &str,
     jitter: &str,
 ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
-    let url = format!("https://{}:8443/build_imp", url);
+    let url = format!("https://{}/build_imp", url);
     let client = ClientBuilder::new()
         .danger_accept_invalid_certs(true)
         .build()
@@ -333,7 +333,7 @@ pub async fn send_bof(file_path: &str, url: &str, token: &str) -> Result<(), Box
     //println!("token: {}", token);
     // Open the file
     let mut file = File::open(file_path)?;
-    let url = format!("https://{}:8443/bofload", url);
+    let url = format!("https://{}/bofload", url);
 
     // Read the file's content into a vector
     let mut buffer = Vec::new();
