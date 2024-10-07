@@ -860,6 +860,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
                                         KeyCode::Backspace => {
                                             app.command_text.pop();
                                         },
+                                        KeyCode::F(1) => {
+                                            // Force refresh logic
+                                            imp_info.clear();
+                                            // Re-fetch all data from the server
+                                            terminal.clear()?;
+                                            terminal.draw(|f| draw_dashboard(f, f.size(), &imp_info, &mut app))?;
+                                        },
                                         KeyCode::PageDown => {
                                             if app.imp_scroll_position < imp_info.len().saturating_sub(1) {
                                                 app.imp_scroll_position += 1;
@@ -945,10 +952,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
                                     }
                                 }
                             }
+                            
                             terminal.draw(|f| draw_dashboard(f, f.size(), &imp_info, &mut app))?;
                         },
                         Some(info) = rx.recv() => {
                             imp_info = info;
+                            //terminal.clear()?;
                             terminal.draw(|f| draw_dashboard(f, f.size(), &imp_info, &mut app))?;
                         },
                         // Listen for UI refresh signals
@@ -956,6 +965,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                             //println!("Received message from ui_refresh_rx");
 
                             app.add_output(new_output); // Update the command_output with new data
+                            
                         terminal.draw(|f| draw_dashboard(f, f.size(), &imp_info, &mut app))?;
                 }
                     }

@@ -1,4 +1,7 @@
 #### 10.07.2024
+- found a bug in conduit that was causing display issues upon terminal resize. I'm still working on a fix for it, but as a temp workaround I've added a keycode (F1) to perform a manual clear and refresh which fixes the immediate issue. see issue #10 for more details.
+
+#### 10.07.2024
 - added a config file to the conduit client. this allows the server port to be configurable.
 
 #### 10.06.2024

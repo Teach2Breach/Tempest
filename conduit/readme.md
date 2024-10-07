@@ -4,6 +4,10 @@
 
 Conduit is a Terminal User Interface (TUI) application that allows you to connect to an Anvil server, build implants (imps), issue tasks, and retrieve data from connected imps. This tool provides a user-friendly interface for managing and interacting with Anvil implants.
 
+##### Known Issues
+
+- As of 10.07.2024, there is an issue with the TUI not properly updating on some terminals when the window is resized. A temp workaround is to press F1 on your keyboard which will clear the terminal and refresh the TUI. I'm still working on a fix for this. See devlog and issue #10 for more details.
+
 ##### Features
 
 - Connect to Anvil server securely
