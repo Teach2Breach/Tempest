@@ -1,3 +1,16 @@
+#### 12.03.2024
+- been working on other projects, so haven't been updating this as frequently.
+- going to put together a large update for Christmas. Below I will list the planned updates:
+    - add a module for dumping lsass with rdump and/or refldump.
+    - add modules for early-cascade injection and snaploader injection.
+    - complete a C agent.
+    - build a modular agent that operator can choose what methods for api resolution to use. 
+    - build a modular agent for including or excluding functionality to better suit the target.
+    - various QoL updates and improvements.
+    - update linux and mac implants.
+- after the Christmas update, I'll do a discovery sprint to consider adding a GUI client.
+- dreamlist: autocomplete for commands, better output display, better session management, better module management.
+
 #### 10.07.2024
 - found a bug in conduit that was causing display issues upon terminal resize. I'm still working on a fix for it, but as a temp workaround I've added a keycode (F1) to perform a manual clear and refresh which fixes the immediate issue. see issue #10 for more details.
 
