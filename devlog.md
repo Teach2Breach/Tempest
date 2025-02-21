@@ -3,6 +3,7 @@
 - working on a GUI for conduit, using qt, its WIP.
 - changed the get_external_ip function on windows_noldr implant to send a placeholder instead of calling out to apify, since that was a high indicator.
 - changed the server to scrape https requests for the origin or x-forwarded-for header to get the client ip.
+- todo : create an implant variant that does not include the coff loader and is not statically linked.
 
 #### 12.03.2024
 - been working on other projects, so haven't been updating this as frequently.

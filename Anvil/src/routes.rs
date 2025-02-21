@@ -94,17 +94,18 @@ pub async fn registration(
     
     // If the IP is the placeholder, replace it with the actual client IP
     if imp_info.ip == "{{SERVER_REPLACE_IP}}" {
-        // First check X-Forwarded-For header (for proxy cases)
-        // Then fall back to direct connection info if header isn't present
         imp_info.ip = req.headers()
             .get("X-Forwarded-For")
             .and_then(|h| h.to_str().ok())
             .and_then(|s| s.split(',').next())
+            .map(|s| s.to_string())  // Convert &str to String
             .unwrap_or_else(|| {
-                req.connection_info().peer_addr()
-                    .unwrap_or("unknown")
-            })
-            .to_string();
+                // Create owned string from connection info
+                match req.connection_info().peer_addr() {
+                    Some(addr) => addr.to_string(),
+                    None => String::from("unknown")
+                }
+            });
     }
 
     // Insert the Imp info into the database
