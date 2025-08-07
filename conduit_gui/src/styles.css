@@ -1,0 +1,16 @@
+.root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #eaeaea; background: #0f0f12; height: 100vh; }
+.app_header { padding: 12px 16px; border-bottom: 1px solid #2a2a34; }
+.app_main { padding: 16px; }
+.login .field { margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px; }
+.login input { padding: 8px; border: 1px solid #3a3a45; background: #141419; color: #eaeaea; border-radius: 6px; }
+.actions button { padding: 8px 14px; background: #2f6fed; border: none; color: #fff; border-radius: 6px; cursor: pointer; }
+.error { color: #ff6b6b; margin-top: 8px; }
+.status { color: #a0a0ff; margin-bottom: 8px; }
+.imp_table { border-collapse: collapse; width: 100%; }
+.imp_table th, .imp_table td { border: 1px solid #2a2a34; padding: 6px 8px; }
+.imp_table thead { background: #171722; }
+.imp_table tbody tr { cursor: pointer; }
+.imp_table tbody tr:hover { background: #1b1b28; }
+.imp_table .fresh { color: #ffffff; }
+.imp_table .stale { color: #ff5a5a; }
+

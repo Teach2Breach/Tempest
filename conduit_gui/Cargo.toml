@@ -1,0 +1,25 @@
+[package]
+name = "conduit_gui"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+dioxus = "0.5"
+dioxus-desktop = "0.5"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.11.4", features = ["json", "native-tls", "tokio-native-tls"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+config = "0.10.1"
+base64 = "0.21.2"
+rfd = "0.14"
+chrono = "0.4"
+
+[profile.release]
+strip = true
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+
+
