@@ -247,14 +247,14 @@ pub async fn get_connected_imps(
 
                         let mut stmt = db
                             .prepare(
-                                "SELECT id, session, ip, username, domain, os, imp_pid, process_name, sleep, last_check_in FROM imps"
+                                "SELECT session, ip, username, domain, os, imp_pid, process_name, sleep, last_check_in FROM imps"
                             )
                             .expect("Failed to prepare statement");
 
                         let imps_iter = stmt
-                            .query_map(params![], |row| {
+                             .query_map(params![], |row| {
                                 Ok((
-                                    //row.get(0)?,
+                                    row.get(0)?,
                                     row.get(1)?,
                                     row.get(2)?,
                                     row.get(3)?,
@@ -263,7 +263,6 @@ pub async fn get_connected_imps(
                                     row.get(6)?,
                                     row.get(7)?,
                                     row.get(8)?,
-                                    row.get(9)?,
                                 ))
                             })
                             .expect("Failed to query map");
@@ -521,6 +520,7 @@ pub async fn build_imp(req: HttpRequest, db: Data<Arc<Mutex<Connection>>>) -> im
                             "RUSTFLAGS",
                             "-C target-feature=+crt-static -C relocation-model=pic",
                         )
+                        .env("RUSTUP_TOOLCHAIN", std::env::var("RUSTUP_TOOLCHAIN").unwrap_or_default())
                         .arg("rustc")
                         //add an arg for format using --lib for dll and --bin for bin
                         .arg("--lib")
@@ -572,6 +572,7 @@ pub async fn build_imp(req: HttpRequest, db: Data<Arc<Mutex<Connection>>>) -> im
                             "RUSTFLAGS",
                             "-C target-feature=+crt-static -C relocation-model=pic",
                         )
+                        .env("RUSTUP_TOOLCHAIN", std::env::var("RUSTUP_TOOLCHAIN").unwrap_or_default())
                         .arg("rustc")
                         //add an arg for format using --lib for dll and --bin for bin
                         .arg("--lib")
@@ -623,6 +624,7 @@ pub async fn build_imp(req: HttpRequest, db: Data<Arc<Mutex<Connection>>>) -> im
                             "RUSTFLAGS",
                             "-C target-feature=+crt-static -C relocation-model=pic",
                         )
+                        .env("RUSTUP_TOOLCHAIN", std::env::var("RUSTUP_TOOLCHAIN").unwrap_or_default())
                         .arg("rustc")
                         //add an arg for format using --lib for dll and --bin for bin
                         .arg("--bin")
@@ -686,6 +688,7 @@ pub async fn build_imp(req: HttpRequest, db: Data<Arc<Mutex<Connection>>>) -> im
                             "RUSTFLAGS",
                             "-C target-feature=+crt-static -C relocation-model=pic",
                         )
+                        .env("RUSTUP_TOOLCHAIN", std::env::var("RUSTUP_TOOLCHAIN").unwrap_or_default())
                         .arg("rustc")
                         //add an arg for format using --lib for dll and --bin for bin
                         .arg("--bin")
@@ -803,6 +806,7 @@ pub async fn build_imp(req: HttpRequest, db: Data<Arc<Mutex<Connection>>>) -> im
                             "RUSTFLAGS",
                             "-C target-feature=+crt-static -C relocation-model=pic",
                         )
+                        .env("RUSTUP_TOOLCHAIN", std::env::var("RUSTUP_TOOLCHAIN").unwrap_or_default())
                         .arg("rustc")
                         //add an arg for format using --lib for dll and --bin for bin
                         .arg("--lib")

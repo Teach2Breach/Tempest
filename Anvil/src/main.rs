@@ -284,6 +284,11 @@ async fn main() -> std::io::Result<()> {
     //end init db
 
     let db_443 = Arc::clone(&db);
+    // read build toolchain pin and set env for child processes (cross)
+    let build_toolchain: String = settings
+        .get("build.toolchain")
+        .unwrap_or_else(|_| String::from("nightly-2025-03-03"));
+    std::env::set_var("RUSTUP_TOOLCHAIN", &build_toolchain);
     //let builder_443 = builder.clone();
 
     //placing imports here during testing

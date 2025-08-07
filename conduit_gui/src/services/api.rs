@@ -23,64 +23,10 @@ pub async fn fetch_imps(url: &str, token: &str) -> Result<Vec<ImpInfo>, Box<dyn 
     let res = client.get(url).header("X-Token", token).send().await?;
     if res.status().is_success() {
         let body = res.text().await?;
-        // First try direct object-based deserialization (expected form)
-        if let Ok(imps) = serde_json::from_str::<Vec<ImpInfo>>(&body) {
-            return Ok(imps);
-        }
-        // Fallback: tolerate array-form rows with 8 or 9 elements
-        if let Ok(rows) = serde_json::from_str::<Vec<Vec<serde_json::Value>>>(&body) {
-            let mapped: Vec<ImpInfo> = rows
-                .into_iter()
-                .map(|r| {
-                    let get = |i: usize| -> String {
-                        r.get(i)
-                            .and_then(|v| v.as_str().map(|s| s.to_string()))
-                            .unwrap_or_default()
-                    };
-                    match r.len() {
-                        // 9-element layout: [session, ip, username, domain, os, pid, process, sleep, last_check_in]
-                        9 | 10 => ImpInfo {
-                            session: get(0),
-                            ip: get(1),
-                            username: get(2),
-                            domain: get(3),
-                            os: get(4),
-                            imp_pid: get(5),
-                            process_name: get(6),
-                            sleep: get(7),
-                            last_check_in: get(8),
-                        },
-                        // 8-element layout (observed): [session, username, domain, os, pid, process, sleep, last_check_in]
-                        8 => ImpInfo {
-                            session: get(0),
-                            ip: String::new(),
-                            username: get(1),
-                            domain: get(2),
-                            os: get(3),
-                            imp_pid: get(4),
-                            process_name: get(5),
-                            sleep: get(6),
-                            last_check_in: get(7),
-                        },
-                        // Fallback: best-effort mapping
-                        _ => ImpInfo {
-                            session: get(0),
-                            ip: get(1),
-                            username: get(2),
-                            domain: get(3),
-                            os: get(4),
-                            imp_pid: get(5),
-                            process_name: get(6),
-                            sleep: get(7),
-                            last_check_in: get(8),
-                        },
-                    }
-                })
-                .collect();
-            return Ok(mapped);
-        }
-        // If both fail, return original error
-        return Err("Failed to parse imp info response".into());
+        // Mirror TUI behavior: deserialize directly into Vec<ImpInfo>.
+        // Server returns JSON array of 9-element sequences in correct field order.
+        let imps: Vec<ImpInfo> = serde_json::from_str(&body)?;
+        Ok(imps)
     } else {
         Err(format!("Failed to retrieve imp info: {}", res.status()).into())
     }

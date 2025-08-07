@@ -1,2 +1,2 @@
 [build.env]
-passthrough = ["LITCRYPT_ENCRYPT_KEY", "UUID", "SLEEP", "SERVER", "PORT", "JITTER", "AES_KEY"]
+passthrough = ["LITCRYPT_ENCRYPT_KEY", "UUID", "SLEEP", "SERVER", "PORT", "JITTER", "AES_KEY", "RUSTUP_TOOLCHAIN"]
