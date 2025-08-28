@@ -1,0 +1,69 @@
+You are joining a new coding session to continue the Tempest Conduit GUI work in this repository.
+
+Goal
+- Review the current GUI code and gui_plan.md, then begin implementing the next GUI features exactly per the plan.
+- Keep the server (Anvil) behavior unchanged unless explicitly asked. Focus on the GUI client.
+
+Context to load first
+1) Read these files:
+   - gui_plan.md (overall plan and milestones)
+   - conduit_gui/src/main.rs
+   - conduit_gui/src/models.rs
+   - conduit_gui/src/services/api.rs
+   - conduit_gui/src/services/cfg.rs
+   - conduit_gui/src/components/dashboard.rs
+   - conduit_gui/src/styles.css
+2) Skim for config/ports so auth hits the right listener:
+   - conduit_gui/config.toml (preferred location; fallback to conduit/config.toml)
+   - conduit/config.toml (server.port = 8443)
+   - Anvil/config.toml (server.conduit_port = 8443) for awareness only
+
+Current state (at last session)
+- Login works and appends the conduit port from config when missing.
+- Dashboard fetches /imps and renders a live table with stale/fresh row coloring.
+- No session view or context actions yet. No frameless window/menu yet.
+
+How to run locally
+- From conduit_gui/: cargo run
+- In the login, enter only the host/IP (the app will append the port from config). Example: 192.168.1.21
+
+Implementation order (start here)
+Follow gui_plan.md. If anything is unclear, prefer what the TUI does today, but use GUI affordances.
+
+Milestone M1 (shell + dashboard actions)
+1) Create a frameless window shell and custom top bar (title, minimize/close) in Dioxus Desktop.
+2) Introduce AppContext (signals for base_url, token, route, selected_session, imps, output buffer, connection messages) and route switch.
+3) Dashboard enhancements:
+   - Track selected row (click) and open session on double-click.
+   - Right-click context menu on a row with actions: Use Session, Kill (confirm), Sleep… (dialog), SOCKS… (dialog), Refresh.
+4) Add a Build button in the top bar to open a Build dialog (fields only for now).
+
+Milestone M2 (session view + output/commands)
+5) Implement session view with header (session short/ip/os), scrollable output pane, and command input at bottom.
+6) Poll retrieve_all_out on an interval; decode URL_SAFE NO_PAD base64; split lines; cap buffer; handle getfile save to loot/.
+7) Command input:
+   - Generic: issue_task(command)
+   - sendfile/bof/inject/runpe: open file picker, upload with bofload, then issue task with basename.
+8) Quick action buttons: whoami, ipconfig, ps, sleep (dialog), socks (dialog), kill (confirm).
+
+Milestone M3 (build + polish)
+9) Build dialog end-to-end (call build_imp, save file with correct extension rules, show toast).
+10) Add status toasts (errors/success), connection re-established message, and keyboard navigation for table/output.
+11) Optional settings modal to edit/persist base URL.
+
+Design/UX notes
+- Keep current theme; extend styles minimally.
+- Do not remove the command input/output panes; they are a core operator affordance.
+- Prefer small, focused edits with compile checks between steps.
+
+API contracts (for reference)
+- POST https://{url}/authenticate (Authorization: Basic base64(username:password)) → token string
+- GET  https://{url}/imps (X-Token) → Vec<ImpInfo>
+- POST https://{url}/issue_task (x-token, x-session, x-task)
+- GET  https://{url}/retrieve_all_out (x-token) → base64 URL_SAFE NO_PAD
+- POST https://{url}/bofload (X-Token, X-Filename; body: binary)
+- POST https://{url}/build_imp (x-token, x-target, x-target-ip, x-target-port, x-tsleep, x-format, x-jitter) → bytes
+
+What to deliver in this session
+- Complete M1 and begin M2. If blocked, document the blocker inline and proceed to the next unblocked item.
+- Keep commits small and descriptive.
