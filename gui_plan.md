@@ -1,128 +1,72 @@
-## Tempest Conduit GUI – Feature Implementation Plan
+## Tempest Conduit GUI – Living Implementation Plan (Numbered Checklist)
 
-Context: The GUI is built with Dioxus Desktop. Current capabilities:
-- Login screen with URL/username/password and config-driven port append.
-- Dashboard table listing imps with live polling and stale/fresh coloring.
-- No session view yet; no command input/output panes; no context actions.
+1. Context and Capabilities
+   1.1. GUI built with Dioxus Desktop.
+   1.2. Current capabilities:
+        - Login screen with URL/username/password and config-driven port append. [complete]
+        - Dashboard table listing imps with live polling and stale/fresh coloring. [complete]
+        - Frameless window with custom top bar (title, minimize/close). [complete]
+        - Build dialog wired end-to-end (build_imp, save file, status). [complete]
+        - Session view: header, output list, command input. [complete]
+        - Terminal consoles: Dashboard global console and Session console. [complete]
+        - Session polling/decoding (URL_SAFE NO_PAD) and getfile save. [complete]
 
-Goal: Achieve feature parity with Conduit TUI while providing GUI affordances:
-- Click/Right-click actions on dashboard rows (select, use session, kill, etc.).
-- Session view with output pane and command input.
-- File upload flows (sendfile, bof, inject, runpe) via file pickers.
-- Build implants via a dialog.
-- Custom window chrome (no native toolbar) and app menu.
-- Robust error/status messaging and connection state indications.
+2. Server Interfaces (Anvil) [complete]
+   2.1. POST /authenticate (Basic) → token string
+   2.2. GET /imps (X-Token) → Vec<ImpInfo>
+   2.3. POST /issue_task (x-token, x-session, x-task)
+   2.4. GET /retrieve_all_out (x-token) → base64 URL_SAFE NO_PAD
+   2.5. POST /bofload (X-Token, X-Filename; body: binary)
+   2.6. POST /build_imp (x-token, x-target, x-target-ip, x-target-port, x-tsleep, x-format, x-jitter) → bytes
+   2.7. ImpInfo fields (ordered): session, ip, username, domain, os, imp_pid, process_name, sleep, last_check_in.
 
-Assumptions & Interfaces
-- Server (Anvil) endpoints (HTTPS on conduit port):
-  - POST /authenticate (Basic auth) → token string
-  - GET /imps (X-Token) → Vec<ImpInfo>
-  - POST /issue_task (x-token, x-session, x-task)
-  - GET /retrieve_all_out (x-token) → base64(URL_SAFE, NO_PAD) payloads
-  - POST /bofload (binary upload) with headers X-Token and X-Filename
-  - POST /build_imp (headers x-token, x-target, x-target-ip, x-target-port, x-tsleep, x-format, x-jitter) → bytes
-- ImpInfo fields (ordered): session, ip, username, domain, os, imp_pid, process_name, sleep, last_check_in.
-- Output retrieval cadence follows min sleep or default 3s.
+3. Dashboard Interactions
+   3.1. Row selection on click; open session on double-click. [complete]
+   3.2. Right-click context menu with actions: [complete]
+        - Use Session
+        - Sleep… (dialog → issue_task("sleep <s> <jitter>"))
+        - SOCKS… (dialog → issue_task("socks <port>"))
+        - Kill (issue_task("kill"))
+        - Refresh (force fetch)
+   3.3. Build button in top bar; opens Build dialog. [complete]
+   3.4. Terminal-style console at bottom of Dashboard to accept text commands
+        (e.g., "use <session>", help, refresh), mirroring TUI global input. [complete]
 
-High-Level UX
-1) Frameless window with custom top bar and application menu.
-2) Login screen → Dashboard upon success.
-3) Dashboard: table of imps; row click selects; right-click opens context menu:
-   - Use session
-   - Kill
-   - Sleep… (opens small dialog)
-   - SOCKS… (port prompt)
-   - Build… (global action in top bar as well)
-   - Refresh
-4) Session view: header with imp details; split panes: output (top), command input (bottom). Buttons for common actions; context menu in output pane for copy/clear.
-5) File upload actions show picker and flow automatically (bof/inject/runpe/sendfile).
+4. Session View
+   4.1. Layout: header (session short, ip, os), output pane, command input. [complete]
+   4.2. Terminal-style console at bottom for entering text commands (primary
+        interaction path, matches TUI semantics). [complete]
+   4.3. Poll retrieve_all_out periodically; decode URL_SAFE NO_PAD; split lines and append; save getfile payloads to loot/. [complete]
+   4.4. Command input handling: generic issue_task(command) except local commands (help, q/quit) handled client-side. [complete]
+   4.5. Special flows (sendfile/bof/inject/runpe): open file picker → upload via bofload → issue task with basename. [pending]
+   4.6. Quick action buttons: whoami, ipconfig, ps, sleep (dialog), socks (dialog), kill (confirm). [pending]
+   4.7. Errors/success toasts; connection re-established message. [pending]
 
-Architecture Changes
-- State: Introduce `AppContext` (via Dioxus context) to hold:
-  - base_url, token, selected_session, selected_imp (lookup), last_known_imps
-  - output buffer (VecDeque<String>), max lines
-  - connection status messages
-- Routing: `Route::Login | Route::Dashboard | Route::Session { session_id }`.
-- Services: existing api.rs (auth, imps, issue_task, retrieve_all_out, build_imp, bofload) are sufficient; add small helpers for composed actions.
-- UI: components
-  - shell.rs (frameless window chrome, menus)
-  - dashboard.rs (table + context menu + actions)
-  - session.rs (output + input + quick action buttons)
-  - dialogs/: build_dialog.rs, sleep_dialog.rs, socks_dialog.rs, confirm_dialog.rs
-  - widgets/: context_menu.rs, status_toast.rs
+5. Build Dialog
+   5.1. Fields: target_os, format, target_ip, target_port, sleep, jitter. [complete]
+   5.2. Call build_imp; save bytes to filename (OS/format rules). [complete]
+   5.3. Show success status in dialog; optionally add open-folder action. [in_progress]
 
-Feature Mapping (TUI → GUI)
-- help: surfaced via menu and in-session help modal.
-- build: dialog with fields, success saves file to cwd and shows toast.
-- use <session>: row right-click → Use; or double-click row.
-- q/quit session: back button from session.
-- whoami/ipconfig/ps/cd/pwd/ls/catfile: via command input; optionally quick buttons for whoami/ipconfig/ps.
-- getfile: no change; prints “File saved to: …” in output.
-- sendfile: file picker; encode + issue; display result.
-- cmd/pwsh/sh/wmi: from command input.
-- bof/inject/runpe: file picker → upload → issue task with filename; show status.
-- socks: dialog asks for port (and IP if needed) → issue task; show status.
-- sleep: dialog asks seconds and jitter → issue; reflects in dashboard next poll.
-- kill: confirmation dialog → issue; remove row upon next poll.
+6. Polish & Settings
+   6.1. Settings modal to edit/persist base URL; toggle http/https (if needed). [pending]
+   6.2. Theming tweaks and responsive table widths; keyboard navigation for table/output. [pending]
+   6.3. Optional logging pane for internal errors and request statuses. [pending]
 
-Detailed Step-by-Step Tasks (LLM-friendly)
+7. Testing Plan
+   7.1. Local E2E against Anvil.
+   7.2. Verify file flows with real uploads/downloads.
+   7.3. Sleep change reflected in dashboard color logic.
+   7.4. Reconnect scenarios (server restart) handled gracefully.
 
-Phase 1: UI Shell & Navigation
-1. Add frameless window: configure Dioxus Desktop to hide native toolbar and draw custom top bar (title, window controls: minimize/close). Provide keyboard shortcuts for menu (Alt key).
-2. Create `AppContext` with signals for: base_url, token, route, selected_session, imps, output buffer, connection_msg.
-3. Implement router in `App` to switch among Login/Dashboard/Session inside a shell with menu.
+8. Status Summary (This Session)
+   8.1. Implemented frameless top bar and Build button.
+   8.2. Built Build dialog and wired server call to generate implant; file saved with proper extension; verified working.
+   8.3. Enhanced Dashboard: selection, double-click to session, context menu (Use, Sleep, SOCKS, Kill, Refresh).
+   8.4. Added Sleep and SOCKS dialogs; actions issue tasks accordingly.
+   8.5. Session consoles and Dashboard console implemented; help/q handled locally; commands issue tasks as in TUI; output polling/decoding with getfile save working.
 
-Phase 2: Dashboard Interactions
-4. Enhance dashboard table: store selected row index; on row click select; on double-click navigate to session.
-5. Add right-click context menu component bound to row coordinate:
-   - Use Session → set selected_session and go to Session.
-   - Kill → confirm dialog; on confirm call issue_task("kill").
-   - Sleep… → dialog (seconds, jitter) → issue_task("sleep <s> <jitter>").
-   - SOCKS… → dialog (port) → issue_task("socks <port>").
-   - Refresh → force one fetch cycle.
-6. Add build button in top bar; opens Build dialog.
-
-Phase 3: Session View
-7. Create session.rs with layout: header (session short, ip, os), output pane (scrollable, grows up to N lines), command input at bottom.
-8. Poll outputs: coroutine on entering session calls retrieve_all_out periodically, decodes URL_SAFE NO_PAD base64; split lines and append; save files for getfile.
-9. Command input handling: on Enter, parse; for special flows:
-   - sendfile/bof/inject/runpe → open file picker; upload via bofload; rewrite command with basename; issue_task.
-   - everything else → issue_task(command_text).
-10. Add quick action buttons: whoami, ps, ipconfig, sleep (dialog), kill (confirm), socks (dialog).
-11. Add errors/success toasts; show “Connection re-established” when polling recovers.
-
-Phase 4: Build Dialog
-12. Implement dialog with fields: target_os, format, target_ip, target_port, sleep, jitter. Validate input.
-13. Call build_imp; save bytes to filename (same convention as TUI); show success toast and open-folder option.
-
-Phase 5: Polish & Settings
-14. Add settings modal to edit base URL and persist last-used URL; allow switching between http/https if ever needed.
-15. Theming tweaks (light/dark) and responsive table column widths; ensure keyboard navigation in table and output.
-16. Logging pane (optional) to display internal errors and request statuses for troubleshooting.
-
-Testing Plan
-- Local E2E against Anvil stub or dev server.
-- File flows (bof/inject/runpe/sendfile/getfile) verified with real uploads and downloads.
-- Sleep change reflected in dashboard color logic.
-- Reconnect scenarios: server restart during session; ensure UI recovers and continues polling.
-
-Risks & Mitigations
-- Different server shapes (8 vs 9 fields): GUI strictly expects object; if needed, reintroduce tolerant mapping.
-- Large outputs: cap output buffer; provide clear/export.
-- Context menu interactions: ensure they’re keyboard accessible.
-
-Implementation Notes (Code Pointers)
-- services/api.rs: already has authenticate, fetch_imps, issue_task, retrieve_all_out, build_imp, bofload.
-- services/cfg.rs: port loading now checks current dir config first.
-- dashboard.rs: extend with selection and context menu; reuse fetch loop.
-- session.rs: new polling coroutine and command flow.
-- dialogs/: build, sleep, socks; widgets/: context_menu, status_toast.
-
-Milestones
-M1: Dashboard selection + context menu + Build dialog skeleton.
-M2: Session view with output polling + command input (basic).
-M3: File flows & quick actions.
-M4: Frameless window + custom menu.
-M5: Polish, error handling, settings.
-
-
+9. Next Steps
+   9.1. Add quick action buttons in Session (whoami, ipconfig, ps, sleep, socks, kill).
+   9.2. Complete file flows (sendfile/bof/inject/runpe) with pickers/uploads and basename rewrite.
+   9.3. Add toasts/status surface and connection recovery message.
+   9.4. Add Settings modal and polish items (keyboard navigation, theming tweaks).
