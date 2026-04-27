@@ -1,3 +1,6 @@
 .vscode
 *./target
 *.exe
+kit/
+techniques/
+upgrade-plan.md
