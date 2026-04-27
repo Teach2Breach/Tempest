@@ -4,3 +4,9 @@
 kit/
 techniques/
 upgrade-plan.md
+/docs
+/scripts
+gui_plan.md
+techplan.md
+imps/win-stargate/include/tempest_bootstrap.h
+.cursor/rules
