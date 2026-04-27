@@ -1,0 +1,8 @@
+beacon.exe
+beacon.dll
+beacon.bin
+beacon.bin.entry_offset
+beacon_sc.exe
+beacon_code.bin
+tools/shellcode_runner.exe
+*.o

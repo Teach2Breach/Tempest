@@ -43,13 +43,26 @@ pub async fn issue_task(url: &str, token: &str, session_id: &str, task: &str) ->
     if res.status().is_success() { Ok(()) } else { Err("Failed to issue task".into()) }
 }
 
-pub async fn retrieve_all_out(url: &str, token: &str) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
-    let url = format!("https://{}/retrieve_all_out", url);
+/// Team / multiplayer mode: `?since_id=` returns all new rows without server-side delete; use `X-Output-Max-Id` for the next cursor.
+pub async fn retrieve_all_out(
+    url: &str,
+    token: &str,
+    since_id: u32,
+) -> Result<(String, u32), Box<dyn std::error::Error + Send + Sync>> {
+    let url = format!("https://{}/retrieve_all_out?since_id={}", url, since_id);
     let client = ClientBuilder::new().danger_accept_invalid_certs(true).build()?;
     let mut headers = HeaderMap::new();
     headers.insert(HeaderName::from_static("x-token"), HeaderValue::from_str(token)?);
     let res = client.get(&url).headers(headers).send().await?;
-    Ok(res.text().await?)
+    let max_id = res
+        .headers()
+        .get("X-Output-Max-Id")
+        .or_else(|| res.headers().get("x-output-max-id"))
+        .and_then(|h| h.to_str().ok())
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(since_id);
+    let body = res.text().await?;
+    Ok((body, max_id))
 }
 
 pub async fn build_imp(url: &str, token: &str, target: &str, target_ip: &str, target_port: &str, tsleep: &str, format: &str, jitter: &str) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
@@ -69,6 +82,7 @@ pub async fn build_imp(url: &str, token: &str, target: &str, target_ip: &str, ta
     Ok(bytes.to_vec())
 }
 
+/// POST raw bytes to `/bofload` (mirrors TUI) — `session_cmd` and file-based tasks.
 pub async fn bofload(url: &str, token: &str, filename: &str, bytes: Vec<u8>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use reqwest::header::{CONTENT_TYPE, USER_AGENT};
     let url = format!("https://{}/bofload", url);

@@ -11,12 +11,115 @@ use config::{Config, File as ConfigFile};
 use rusqlite::{params, Connection, Result as SqlResult};
 use serde::Deserialize;
 use std::env;
-use std::path::PathBuf;
+use std::io::ErrorKind;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tokio::process::Command;
 use tokio::task;
 
 //testing adding encryption for data between server and imps
+
+/// If `TEMPEST_OUTPUTS_MAX_ROWS` (from `config.toml` / `server.outputs_max_rows`) is > 0, delete oldest
+/// `outputs` rows so at most that many remain. Q7 / upgrade-plan.
+pub fn prune_outputs_if_needed(db: &Connection) {
+    let max: u64 = std::env::var("TEMPEST_OUTPUTS_MAX_ROWS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    if max == 0 {
+        return;
+    }
+    let n: i64 = match db.query_row("SELECT COUNT(*) FROM outputs", [], |row| row.get(0)) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("prune_outputs_if_needed: count: {e}");
+            return;
+        }
+    };
+    if (n as u64) <= max {
+        return;
+    }
+    let to_delete = n as u64 - max;
+    if let Err(e) = db.execute(
+        "DELETE FROM outputs WHERE id IN (SELECT id FROM outputs ORDER BY id ASC LIMIT ?1)",
+        [to_delete as i64],
+    ) {
+        eprintln!("prune_outputs_if_needed: delete: {e}");
+    }
+}
+
+/// `PATH` for `cross` / `make` when Anvil is started with a minimal environment (e.g. systemd, IDE);
+/// `cross` is often only in `~/.cargo/bin`.
+fn path_for_build_subprocess() -> String {
+    use std::collections::HashSet;
+    let mut out: Vec<String> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut add = |s: &str| {
+        if s.is_empty() {
+            return;
+        }
+        let t = s.to_string();
+        if seen.insert(t.clone()) {
+            out.push(t);
+        }
+    };
+    for d in ["/usr/local/bin", "/usr/bin", "/bin"] {
+        if Path::new(d).is_dir() {
+            add(d);
+        }
+    }
+    if let Ok(h) = env::var("HOME") {
+        let c = format!("{h}/.cargo/bin");
+        if Path::new(&c).is_dir() {
+            add(&c);
+        }
+    }
+    if let Ok(ch) = env::var("CARGO_HOME") {
+        let c = format!("{ch}/bin");
+        if Path::new(&c).is_dir() {
+            add(&c);
+        }
+    }
+    if let Ok(p) = env::var("PATH") {
+        for part in p.split(':') {
+            add(part);
+        }
+    }
+    out.join(":")
+}
+
+fn build_subprocess(program: &str) -> Command {
+    let mut c = Command::new(program);
+    c.env("PATH", path_for_build_subprocess());
+    c
+}
+
+fn make_subprocess() -> Command {
+    let prog = if Path::new("/usr/bin/make").exists() {
+        "/usr/bin/make"
+    } else {
+        "make"
+    };
+    build_subprocess(prog)
+}
+
+/// Run a build child process; do not panic on ENOENT (missing `cross` / `make` on PATH).
+async fn run_build_cmd(mut cmd: Command) -> Result<std::process::Output, HttpResponse> {
+    match cmd.output().await {
+        Ok(o) => Ok(o),
+        Err(e) if e.kind() == ErrorKind::NotFound => {
+            let msg = format!(
+                "Build tool not found (need `make`+MinGW for Windows C implant, `cargo` in PATH for Linux; try ~/.cargo/bin). {e}"
+            );
+            eprintln!("build_imp: {msg}");
+            Err(HttpResponse::InternalServerError().body(msg))
+        }
+        Err(e) => {
+            eprintln!("build_imp: {e}");
+            Err(HttpResponse::InternalServerError().body(format!("Failed to start build: {e}")))
+        }
+    }
+}
 
 //function templates
 /*
@@ -334,15 +437,19 @@ pub async fn build_imp(req: HttpRequest, db: Data<Arc<Mutex<Connection>>>) -> im
 
             let jitter = req.headers().get("X-Jitter");
 
+            // Trimming avoids 400s when the GUI sends accidental spaces; log reasons so the operator
+            // sees them on the server (build_imp had multiple silent BadRequest paths before).
             //check if target is set. do it just like the token check above, but include a none match arm
             let target = match target {
                 Some(target) => match target.to_str() {
-                    Ok(target) => target.to_owned(),
+                    Ok(target) => target.trim().to_owned(),
                     Err(_) => {
+                        eprintln!("build_imp: BadRequest: Failed to read target (header not UTF-8)");
                         return HttpResponse::BadRequest().body("Failed to read target");
                     }
                 },
                 None => {
+                    eprintln!("build_imp: BadRequest: missing X-Target");
                     return HttpResponse::BadRequest().body("Failed to read target");
                 }
             };
@@ -350,12 +457,14 @@ pub async fn build_imp(req: HttpRequest, db: Data<Arc<Mutex<Connection>>>) -> im
             //check if target_ip is set. do it just like the token check above, but include a none match arm
             let target_ip = match target_ip {
                 Some(target_ip) => match target_ip.to_str() {
-                    Ok(target_ip) => target_ip.to_owned(),
+                    Ok(target_ip) => target_ip.trim().to_owned(),
                     Err(_) => {
+                        eprintln!("build_imp: BadRequest: Failed to read X-Target-IP");
                         return HttpResponse::BadRequest().body("Failed to read target_ip");
                     }
                 },
                 None => {
+                    eprintln!("build_imp: BadRequest: missing X-Target-IP");
                     return HttpResponse::BadRequest().body("Failed to read target_ip");
                 }
             };
@@ -364,12 +473,14 @@ pub async fn build_imp(req: HttpRequest, db: Data<Arc<Mutex<Connection>>>) -> im
 
             let target_port = match target_port {
                 Some(target_port) => match target_port.to_str() {
-                    Ok(target_port) => target_port.to_owned(),
+                    Ok(target_port) => target_port.trim().to_owned(),
                     Err(_) => {
+                        eprintln!("build_imp: BadRequest: Failed to read X-Target-Port");
                         return HttpResponse::BadRequest().body("Failed to read target_port");
                     }
                 },
                 None => {
+                    eprintln!("build_imp: BadRequest: missing X-Target-Port");
                     return HttpResponse::BadRequest().body("Failed to read target_port");
                 }
             };
@@ -378,12 +489,14 @@ pub async fn build_imp(req: HttpRequest, db: Data<Arc<Mutex<Connection>>>) -> im
 
             let tsleep = match tsleep {
                 Some(tsleep) => match tsleep.to_str() {
-                    Ok(tsleep) => tsleep.to_owned(),
+                    Ok(tsleep) => tsleep.trim().to_owned(),
                     Err(_) => {
+                        eprintln!("build_imp: BadRequest: Failed to read X-TSleep");
                         return HttpResponse::BadRequest().body("Failed to read tsleep");
                     }
                 },
                 None => {
+                    eprintln!("build_imp: BadRequest: missing X-TSleep");
                     return HttpResponse::BadRequest().body("Failed to read tsleep");
                 }
             };
@@ -391,12 +504,14 @@ pub async fn build_imp(req: HttpRequest, db: Data<Arc<Mutex<Connection>>>) -> im
             //check if jitter is set. do it just like the token check above, but include a none match arm
             let jitter = match jitter {
                 Some(jitter) => match jitter.to_str() {
-                    Ok(jitter) => jitter.to_owned(),
+                    Ok(jitter) => jitter.trim().to_owned(),
                     Err(_) => {
+                        eprintln!("build_imp: BadRequest: Failed to read X-Jitter");
                         return HttpResponse::BadRequest().body("Failed to read jitter");
                     }
                 },
                 None => {
+                    eprintln!("build_imp: BadRequest: missing X-Jitter");
                     return HttpResponse::BadRequest().body("Failed to read jitter");
                 }
             };
@@ -406,17 +521,24 @@ pub async fn build_imp(req: HttpRequest, db: Data<Arc<Mutex<Connection>>>) -> im
             let format = match format {
                 Some(format) => match format.to_str() {
                     Ok(format) => {
+                        let format = format.trim();
                         if ["exe", "dll", "raw", "elf"].contains(&format) {
                             format.to_owned()
                         } else {
+                            eprintln!(
+                                "build_imp: BadRequest: Invalid X-Format {:?} (expected exe|dll|raw|elf)",
+                                format
+                            );
                             return HttpResponse::BadRequest().body("Invalid format");
                         }
                     }
                     Err(_) => {
+                        eprintln!("build_imp: BadRequest: Failed to read X-Format");
                         return HttpResponse::BadRequest().body("Failed to read format");
                     }
                 },
                 None => {
+                    eprintln!("build_imp: BadRequest: missing X-Format");
                     return HttpResponse::BadRequest().body("Failed to read format");
                 }
             };
@@ -461,397 +583,145 @@ pub async fn build_imp(req: HttpRequest, db: Data<Arc<Mutex<Connection>>>) -> im
                 println!("PORT: {}", std::env::var("PORT").unwrap());
                 println!("format: {}", format);
                 println!("jitter: {}", std::env::var("JITTER").unwrap());
+                println!("X-Target: {target}");
 
-                //we will use cargo to build the imp for linux
-                if target == "linux" && format == "elf" {
-                    let output = Command::new("cross")
-                        .current_dir("../imps/linux_imp")
-                        .arg("build")
-                        .arg("--target=x86_64-unknown-linux-gnu") // Corrected here
-                        //TODO: need more options for target arch
-                        .arg("--release")
-                        // Add an arg for format using --lib for dll and --bin for bin
-                        .arg("--bin")
-                        .arg("linux_imp")
-                        //shouldn't need to specify linux target since server runs on linux only
-                        //.arg("--target=x86_64-unknown-linux-musl")
-                        .output()
-                        .await
-                        .expect("Failed to execute command");
-
-                    //i guess we arent returning the linux imp as a file yet. need to update that
-                    if output.status.success() {
-                        let current_dir = match env::current_dir() {
-                            Ok(dir) => dir,
-                            Err(_) => {
+                // Windows: C / MinGW — sources under `imps/win-stargate` (see TEMPEST_WIN_STARGATE_DIR).
+                let tnorm = target.to_ascii_lowercase();
+                if (tnorm == "windows" || tnorm == "windows_stargate")
+                    && (format == "exe" || format == "dll" || format == "raw")
+                {
+                    let win_stargate_dir: PathBuf = match env::var("TEMPEST_WIN_STARGATE_DIR") {
+                        Ok(p) => PathBuf::from(p),
+                        Err(_) => match env::current_dir() {
+                            Ok(d) => d.join("../imps/win-stargate"),
+                            Err(e) => {
+                                eprintln!("build_imp: current_dir: {e}");
                                 return HttpResponse::InternalServerError()
-                                    .body("Failed to get current directory")
+                                    .body("Failed to get current directory");
                             }
-                        };
-
-                        let path = match target.as_str() {
-                            "linux" => current_dir.join("../imps/linux_imp/target/x86_64-unknown-linux-gnu/release/linux_imp"),
-                            "windows" => match format.as_str() {
-                                "exe" => current_dir.join("../imps/windows_ldr/target/x86_64-pc-windows-gnu/release/windows_ldr.exe"),
-                                "dll" => current_dir.join("../imps/windows_ldr/target/x86_64-pc-windows-gnu/release/windows_ldr.dll"),
-                                _ => current_dir.clone(),
-                            },
-                            _ => current_dir.clone(),
-                        };
-
-                        let data = tokio::fs::read(path).await.unwrap();
-                        HttpResponse::Ok().body(data)
-                    } else {
-                        eprintln!("Command executed with failing error code");
-                        eprintln!(
-                            "Standard Output: {}",
-                            String::from_utf8_lossy(&output.stdout)
-                        );
-                        eprintln!(
-                            "Standard Error: {}",
-                            String::from_utf8_lossy(&output.stderr)
-                        );
-                        return HttpResponse::InternalServerError().body("Failed to build imp");
-                    } //this is a hideous mess. need to clean it up. need to turn these into functions and call them maybe from a match tree
-                } else if target == "windows_noldr" && format == "raw" {
-                    let output = Command::new("cross")
-                        .current_dir("../imps/windows_noldr")
-                        .env(
-                            "RUSTFLAGS",
-                            "-C target-feature=+crt-static -C relocation-model=pic",
-                        )
-                        .env("RUSTUP_TOOLCHAIN", std::env::var("RUSTUP_TOOLCHAIN").unwrap_or_default())
-                        .arg("rustc")
-                        //add an arg for format using --lib for dll and --bin for bin
-                        .arg("--lib")
-                        .arg("--target")
-                        .arg("x86_64-pc-windows-gnu")
-                        .arg("--release")
-                        .arg("--")
-                        .arg("-C")
-                        .arg("relocation-model=pic") // This might be redundant with the RUSTFLAGS but ensures the PIC setting.
-                        .output()
-                        .await
-                        .expect("Failed to execute command");
-
-                    if output.status.success() {
-                        let current_dir = match env::current_dir() {
-                            Ok(dir) => dir,
-                            Err(_) => {
-                                return HttpResponse::InternalServerError()
-                                    .body("Failed to get current directory")
-                            }
-                        };
-
-                        let path = current_dir.join("../imps/windows_noldr/target/x86_64-pc-windows-gnu/release/windows_noldr.dll");
-
-                        //convert path to a String
-                        let path = path.to_str().unwrap().to_string();
-
-                        let shellcode = convert_dll_to_shellcode(path).await;
-
-                        //let data = tokio::fs::read(path).await.unwrap();
-                        let data = shellcode.clone();
-                        HttpResponse::Ok().body(data)
-                    } else {
-                        eprintln!("Command executed with failing error code");
-                        eprintln!(
-                            "Standard Output: {}",
-                            String::from_utf8_lossy(&output.stdout)
-                        );
-                        eprintln!(
-                            "Standard Error: {}",
-                            String::from_utf8_lossy(&output.stderr)
-                        );
-                        return HttpResponse::InternalServerError().body("Failed to build imp");
-                    }
-                } else if target == "windows" && format == "raw" {
-                    let output = Command::new("cross")
-                        .current_dir("../imps/windows_ldr")
-                        .env(
-                            "RUSTFLAGS",
-                            "-C target-feature=+crt-static -C relocation-model=pic",
-                        )
-                        .env("RUSTUP_TOOLCHAIN", std::env::var("RUSTUP_TOOLCHAIN").unwrap_or_default())
-                        .arg("rustc")
-                        //add an arg for format using --lib for dll and --bin for bin
-                        .arg("--lib")
-                        .arg("--target")
-                        .arg("x86_64-pc-windows-gnu")
-                        .arg("--release")
-                        .arg("--")
-                        .arg("-C")
-                        .arg("relocation-model=pic") // This might be redundant with the RUSTFLAGS but ensures the PIC setting.
-                        .output()
-                        .await
-                        .expect("Failed to execute command");
-
-                    if output.status.success() {
-                        let current_dir = match env::current_dir() {
-                            Ok(dir) => dir,
-                            Err(_) => {
-                                return HttpResponse::InternalServerError()
-                                    .body("Failed to get current directory")
-                            }
-                        };
-
-                        let path = current_dir.join("../imps/windows_ldr/target/x86_64-pc-windows-gnu/release/windows_ldr.dll");
-
-                        //convert path to a String
-                        let path = path.to_str().unwrap().to_string();
-
-                        let shellcode = convert_dll_to_shellcode(path).await;
-
-                        //let data = tokio::fs::read(path).await.unwrap();
-                        let data = shellcode.clone();
-                        HttpResponse::Ok().body(data)
-                    } else {
-                        eprintln!("Command executed with failing error code");
-                        eprintln!(
-                            "Standard Output: {}",
-                            String::from_utf8_lossy(&output.stdout)
-                        );
-                        eprintln!(
-                            "Standard Error: {}",
-                            String::from_utf8_lossy(&output.stderr)
-                        );
-                        return HttpResponse::InternalServerError().body("Failed to build imp");
-                    }
-                } else if target == "windows" && format == "exe" {
-                    let output = Command::new("cross")
-                        .current_dir("../imps/windows_ldr")
-                        .env(
-                            "RUSTFLAGS",
-                            "-C target-feature=+crt-static -C relocation-model=pic",
-                        )
-                        .env("RUSTUP_TOOLCHAIN", std::env::var("RUSTUP_TOOLCHAIN").unwrap_or_default())
-                        .arg("rustc")
-                        //add an arg for format using --lib for dll and --bin for bin
-                        .arg("--bin")
-                        .arg("windows_ldr")
-                        .arg("--target")
-                        .arg("x86_64-pc-windows-gnu")
-                        .arg("--release")
-                        .arg("--")
-                        .arg("-C")
-                        .arg("relocation-model=pic") // This might be redundant with the RUSTFLAGS but ensures the PIC setting.
-                        .output()
-                        .await
-                        .expect("Failed to execute command");
-
-                    if output.status.success() {
-                        //print the SLEEP env var for debugging
-                        //println!("SLEEP: {}", std::env::var("SLEEP").unwrap());
-
-                        //PICK UP DEBUGGING HERE
-                        //the filepath depends on the target OS
-                        //so we need to check the target again and return the correct path
-                        //the path for the linux imp is ../imps/linux_imp/target/release/linux_imp
-                        //the path for the windows imp is ../imps/windows_ldr/target/x86_64-pc-windows-gnu/release/windows_ldr.exe
-
-                        let current_dir = match env::current_dir() {
-                            Ok(dir) => dir,
-                            Err(_) => {
-                                return HttpResponse::InternalServerError()
-                                    .body("Failed to get current directory")
-                            }
-                        };
-
-                        let path = match target.as_str() {
-                            "linux" => current_dir.join("../imps/linux_imp/target/x86_64-unknown-linux-gnu/release/linux_imp"),
-                            "windows" => match format.as_str() {
-                                "exe" => current_dir.join("../imps/windows_ldr/target/x86_64-pc-windows-gnu/release/windows_ldr.exe"),
-                                "dll" => current_dir.join("../imps/windows_ldr/target/x86_64-pc-windows-gnu/release/windows_ldr.dll"),
-                                _ => current_dir.clone(),
-                            },
-                            _ => current_dir.clone(),
-                        };
-
-                        let data = tokio::fs::read(path).await.unwrap();
-                        HttpResponse::Ok().body(data)
-                    } else {
-                        eprintln!("Command executed with failing error code");
-                        eprintln!(
-                            "Standard Output: {}",
-                            String::from_utf8_lossy(&output.stdout)
-                        );
-                        eprintln!(
-                            "Standard Error: {}",
-                            String::from_utf8_lossy(&output.stderr)
-                        );
-                        return HttpResponse::InternalServerError().body("Failed to build imp");
-                    } //this is a hideous mess. need to clean it up. need to turn these into functions and call them maybe from a match tree
-                } else if target == "windows_noldr" && format == "exe" {
-                    let output = Command::new("cross")
-                        .current_dir("../imps/windows_noldr")
-                        .env(
-                            "RUSTFLAGS",
-                            "-C target-feature=+crt-static -C relocation-model=pic",
-                        )
-                        .env("RUSTUP_TOOLCHAIN", std::env::var("RUSTUP_TOOLCHAIN").unwrap_or_default())
-                        .arg("rustc")
-                        //add an arg for format using --lib for dll and --bin for bin
-                        .arg("--bin")
-                        .arg("windows_noldr")
-                        .arg("--target")
-                        .arg("x86_64-pc-windows-gnu")
-                        .arg("--release")
-                        .arg("--")
-                        .arg("-C")
-                        .arg("relocation-model=pic") // This might be redundant with the RUSTFLAGS but ensures the PIC setting.
-                        .output()
-                        .await
-                        .expect("Failed to execute command");
-
-                    if output.status.success() {
-                        //print the SLEEP env var for debugging
-                        //println!("SLEEP: {}", std::env::var("SLEEP").unwrap());
-
-                        //PICK UP DEBUGGING HERE
-                        //the filepath depends on the target OS
-                        //so we need to check the target again and return the correct path
-                        //the path for the linux imp is ../imps/linux_imp/target/release/linux_imp
-                        //the path for the windows imp is ../imps/windows_ldr/target/x86_64-pc-windows-gnu/release/windows_ldr.exe
-
-                        let current_dir = match env::current_dir() {
-                            Ok(dir) => dir,
-                            Err(_) => {
-                                return HttpResponse::InternalServerError()
-                                    .body("Failed to get current directory")
-                            }
-                        };
-
-                        let path = match target.as_str() {
-                            "linux" => current_dir.join("../imps/linux_imp/target/release/linux_imp"),
-                            "windows_noldr" => match format.as_str() {
-                                "exe" => current_dir.join("../imps/windows_noldr/target/x86_64-pc-windows-gnu/release/windows_noldr.exe"),
-                                "dll" => current_dir.join("../imps/windows_noldr/target/x86_64-pc-windows-gnu/release/windows_noldr.dll"),
-                                _ => current_dir.clone(),
-                            },
-                            _ => current_dir.clone(),
-                        };
-
-                        let data = tokio::fs::read(path).await.unwrap();
-                        HttpResponse::Ok().body(data)
-                    } else {
-                        eprintln!("Command executed with failing error code");
-                        eprintln!(
-                            "Standard Output: {}",
-                            String::from_utf8_lossy(&output.stdout)
-                        );
-                        eprintln!(
-                            "Standard Error: {}",
-                            String::from_utf8_lossy(&output.stderr)
-                        );
-                        return HttpResponse::InternalServerError().body("Failed to build imp");
-                    }
-                } else if target == "windows_noldr" && format == "dll" {
-                    let output = Command::new("cross")
-                        .current_dir("../imps/windows_noldr")
-                        .env(
-                            "RUSTFLAGS",
-                            "-C target-feature=+crt-static -C relocation-model=pic",
-                        )
-                        .arg("rustc")
-                        //add an arg for format using --lib for dll and --bin for bin
-                        .arg("--lib")
-                        .arg("--target")
-                        .arg("x86_64-pc-windows-gnu")
-                        .arg("--release")
-                        .arg("--")
-                        .arg("-C")
-                        .arg("relocation-model=pic") // This might be redundant with the RUSTFLAGS but ensures the PIC setting.
-                        .output()
-                        .await
-                        .expect("Failed to execute command");
-
-                    if output.status.success() {
-                        //print the SLEEP env var for debugging
-                        //println!("SLEEP: {}", std::env::var("SLEEP").unwrap());
-
-                        //PICK UP DEBUGGING HERE
-                        //the filepath depends on the target OS
-                        //so we need to check the target again and return the correct path
-                        //the path for the linux imp is ../imps/linux_imp/target/release/linux_imp
-                        //the path for the windows imp is ../imps/windows_ldr/target/x86_64-pc-windows-gnu/release/windows_ldr.exe
-
-                        let current_dir = match env::current_dir() {
-                            Ok(dir) => dir,
-                            Err(_) => {
-                                return HttpResponse::InternalServerError()
-                                    .body("Failed to get current directory")
-                            }
-                        };
-
-                        let path = current_dir.join("../imps/windows_noldr/target/x86_64-pc-windows-gnu/release/windows_noldr.dll");
-
-                        let data = tokio::fs::read(path).await.unwrap();
-                        HttpResponse::Ok().body(data)
-                    } else {
-                        eprintln!("Command executed with failing error code");
-                        eprintln!(
-                            "Standard Output: {}",
-                            String::from_utf8_lossy(&output.stdout)
-                        );
-                        eprintln!(
-                            "Standard Error: {}",
-                            String::from_utf8_lossy(&output.stderr)
-                        );
-                        return HttpResponse::InternalServerError().body("Failed to build imp");
-                    }
-                } else if target == "windows" && format == "dll" {
-                    let output = Command::new("cross")
-                        .current_dir("../imps/windows_ldr")
-                        .env(
-                            "RUSTFLAGS",
-                            "-C target-feature=+crt-static -C relocation-model=pic",
-                        )
-                        .env("RUSTUP_TOOLCHAIN", std::env::var("RUSTUP_TOOLCHAIN").unwrap_or_default())
-                        .arg("rustc")
-                        //add an arg for format using --lib for dll and --bin for bin
-                        .arg("--lib")
-                        .arg("--target")
-                        .arg("x86_64-pc-windows-gnu")
-                        .arg("--release")
-                        .arg("--")
-                        .arg("-C")
-                        .arg("relocation-model=pic") // This might be redundant with the RUSTFLAGS but ensures the PIC setting.
-                        .output()
-                        .await
-                        .expect("Failed to execute command");
-
-                    if output.status.success() {
-                        //print the SLEEP env var for debugging
-                        //println!("SLEEP: {}", std::env::var("SLEEP").unwrap());
-
-                        //PICK UP DEBUGGING HERE
-                        //the filepath depends on the target OS
-                        //so we need to check the target again and return the correct path
-                        //the path for the linux imp is ../imps/linux_imp/target/release/linux_imp
-                        //the path for the windows imp is ../imps/windows_ldr/target/x86_64-pc-windows-gnu/release/windows_ldr.exe
-
-                        let current_dir = match env::current_dir() {
-                            Ok(dir) => dir,
-                            Err(_) => {
-                                return HttpResponse::InternalServerError()
-                                    .body("Failed to get current directory")
-                            }
-                        };
-
-                        let path = match target.as_str() {
-                        "linux" => current_dir.join("../imps/linux_imp/target/release/linux_imp"),
-                        "windows" => match format.as_str() {
-                            "exe" => current_dir.join("../imps/windows_ldr/target/x86_64-pc-windows-gnu/release/windows_ldr.exe"),
-                            "dll" => current_dir.join("../imps/windows_ldr/target/x86_64-pc-windows-gnu/release/windows_ldr.dll"),
-                            _ => current_dir.clone(),
                         },
-                        _ => current_dir.clone(),
+                    };
+                    eprintln!("build_imp: make cwd = {}", win_stargate_dir.display());
+                    if !win_stargate_dir.is_dir() {
+                        eprintln!(
+                            "build_imp: win-stargate path missing (copy imps/win-stargate here, run Anvil with cwd=Anvil/, or set TEMPEST_WIN_STARGATE_DIR)"
+                        );
+                    }
+
+                    let make_target = match format.as_str() {
+                        "exe" => "exe",
+                        "dll" => "dll",
+                        "raw" => "raw",
+                        _ => "exe",
+                    };
+                    let artifact = match format.as_str() {
+                        "exe" => "beacon.exe",
+                        "dll" => "beacon.dll",
+                        "raw" => "beacon.bin",
+                        _ => "beacon.exe",
+                    };
+                    let aes_b64 = match env::var("AES_KEY") {
+                        Ok(s) => s,
+                        Err(_) => {
+                            eprintln!("build_imp: AES_KEY not set (Anvil should set this at startup from aes_key.bin)");
+                            return HttpResponse::InternalServerError()
+                                .body("AES_KEY not set; cannot embed implant crypto material");
+                        }
+                    };
+                    /* 32 raw bytes, URL_SAFE, NO_PAD — always 43 characters (Anvil `main.rs` CUSTOM_ENGINE). */
+                    if aes_b64.len() != 43 {
+                        eprintln!(
+                            "build_imp: AES_KEY is {} bytes UTF-8 (expected 43); wrong encoding or Anvil not started with aes_key.bin",
+                            aes_b64.len()
+                        );
+                        return HttpResponse::InternalServerError().body(
+                            "Invalid AES_KEY length for win-stargate: expected 43-char URL-safe base64",
+                        );
+                    }
+                    /* imps/win-stargate/Makefile generates `include/tempest_bootstrap.h` from AES_KEY. */
+                    let output = match run_build_cmd({
+                        let mut c = make_subprocess();
+                        c.current_dir(&win_stargate_dir)
+                            .env("AES_KEY", &aes_b64)
+                            .arg(format!("SERVER={target_ip}"))
+                            .arg(format!("PORT={target_port}"))
+                            .arg(format!("SLEEP={tsleep}"))
+                            .arg(format!("JITTER={jitter}"))
+                            .arg(format!("UUID={imp_secret}"))
+                            .arg(&make_target);
+                        eprintln!(
+                            "build_imp: win-stargate make: SERVER={target_ip} PORT={target_port} SLEEP={tsleep} JITTER={jitter} target={make_target} cwd={}",
+                            win_stargate_dir.display()
+                        );
+                        c
+                    })
+                    .await
+                    {
+                        Ok(o) => o,
+                        Err(resp) => return resp,
                     };
 
-                        let data = tokio::fs::read(path).await.unwrap();
-                        HttpResponse::Ok().body(data)
+                    if output.status.success() {
+                        let path = win_stargate_dir.join(artifact);
+                        let data = match tokio::fs::read(&path).await {
+                            Ok(d) => d,
+                            Err(e) => {
+                                eprintln!("win-stargate: read {}: {e}", path.display());
+                                return HttpResponse::InternalServerError()
+                                    .body("Failed to read built implant");
+                            }
+                        };
+                        return HttpResponse::Ok().body(data);
                     } else {
-                        eprintln!("Command executed with failing error code");
+                        eprintln!("win-stargate make failed (target {make_target})");
+                        eprintln!("stdout: {}", String::from_utf8_lossy(&output.stdout));
+                        eprintln!("stderr: {}", String::from_utf8_lossy(&output.stderr));
+                        return HttpResponse::InternalServerError()
+                            .body("Failed to build Windows C implant (win-stargate)");
+                    }
+                } else if tnorm == "linux" && format == "elf" {
+                    // Native `cargo` on the server host (no `cross` required for default x64 glibc Linux)
+                    let output = match run_build_cmd({
+                        let mut c = build_subprocess("cargo");
+                        c.current_dir("../imps/linux_imp")
+                            .arg("build")
+                            .arg("--release")
+                            .arg("--bin")
+                            .arg("linux_imp");
+                        c
+                    })
+                    .await
+                    {
+                        Ok(o) => o,
+                        Err(resp) => return resp,
+                    };
+
+                    if output.status.success() {
+                        let current_dir = match env::current_dir() {
+                            Ok(dir) => dir,
+                            Err(_) => {
+                                return HttpResponse::InternalServerError()
+                                    .body("Failed to get current directory")
+                            }
+                        };
+                        // Same layout as `cargo build` on this host (e.g. target/release/linux_imp)
+                        let rel = if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
+                            "target/release/linux_imp"
+                        } else {
+                            "target/x86_64-unknown-linux-gnu/release/linux_imp"
+                        };
+                        let path = current_dir.join("../imps/linux_imp").join(rel);
+                        let data = match tokio::fs::read(&path).await {
+                            Ok(d) => d,
+                            Err(e) => {
+                                eprintln!("linux_imp: read {}: {e}", path.display());
+                                return HttpResponse::InternalServerError()
+                                    .body("Failed to read built Linux implant; check host triple vs imps/linux_imp/target/");
+                            }
+                        };
+                        return HttpResponse::Ok().body(data);
+                    } else {
+                        eprintln!("linux cargo build failed");
                         eprintln!(
                             "Standard Output: {}",
                             String::from_utf8_lossy(&output.stdout)
@@ -860,12 +730,18 @@ pub async fn build_imp(req: HttpRequest, db: Data<Arc<Mutex<Connection>>>) -> im
                             "Standard Error: {}",
                             String::from_utf8_lossy(&output.stderr)
                         );
-                        return HttpResponse::InternalServerError().body("Failed to build imp");
+                        return HttpResponse::InternalServerError().body("Failed to build Linux implant");
                     }
-                }
-                //no mac support yet
-                else {
-                    HttpResponse::BadRequest().body("Invalid target OS")
+                } else if tnorm == "windows_noldr" {
+                    return HttpResponse::BadRequest()
+                        .body("windows_noldr (Rust) is no longer built server-side.");
+                } else {
+                    eprintln!(
+                        "build_imp: BadRequest: no matching build (target={target:?} format={format:?})"
+                    );
+                    HttpResponse::BadRequest().body(
+                        "Invalid target or format. Windows C: (windows|windows_stargate) + exe|dll|raw; Linux: linux + elf.",
+                    )
                 }
             } else {
                 // If the token is invalid, return Unauthorized
@@ -1469,9 +1345,15 @@ pub async fn return_out(
         }
     };
 
-    // Deserialize the decrypted data
-    let output_data: OutputData =
-        serde_json::from_str(&decrypted_data).expect("Failed to deserialize data");
+    // Deserialize the decrypted data (implant must JSON-escape newlines in output, etc.)
+    let output_data: OutputData = match serde_json::from_str(&decrypted_data) {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("return_out: invalid JSON in decrypted body: {e}");
+            return HttpResponse::BadRequest()
+                .body("Invalid task output JSON (see server log; often unescaped newlines in output)");
+        }
+    };
 
     let imp_token = output_data.session;
     let task_name = unescape_backslashes(&output_data.task_name);
@@ -1505,6 +1387,7 @@ pub async fn return_out(
             params![imp_token, task_name, imp_output],
         )
         .expect("Failed to insert cmd output");
+        prune_outputs_if_needed(&db);
 
         /* old delete task code
             // Removing task from database based on both imp_token and task_name matching
@@ -1603,7 +1486,50 @@ pub async fn retrieve_out(req: HttpRequest, db: Data<Arc<Mutex<Connection>>>) ->
 fn unescape_backslashes(input: &str) -> String {
     input.replace("\\\\", "\\")
 }
-//this function retrieves all output from imps, because i had a bug in the retrieve_out function and i dont remember what happened after that
+/// True when the client uses `?since_id=` — team / multiplayer mode: batch rows, no delete-on-read.
+fn retrieve_all_out_uses_cursor(req: &HttpRequest) -> bool {
+    req.uri().query().map_or(false, |q| {
+        q.split('&').any(|pair| {
+            let name = pair.splitn(2, '=').next().unwrap_or("");
+            name == "since_id"
+        })
+    })
+}
+
+/// Parse `since_id` from query; defaults to 0 if present but empty.
+fn parse_since_id_param(req: &HttpRequest) -> i32 {
+    req.uri()
+        .query()
+        .and_then(|q| {
+            for pair in q.split('&') {
+                let mut p = pair.splitn(2, '=');
+                if p.next() == Some("since_id") {
+                    if let Some(v) = p.next() {
+                        if v.is_empty() {
+                            return Some(0);
+                        }
+                        return v.parse().ok();
+                    }
+                }
+            }
+            None
+        })
+        .unwrap_or(0)
+}
+
+fn format_output_row(imp_token: &str, task: &str, output: &str) -> String {
+    let session_value = imp_token
+        .chars()
+        .rev()
+        .take(8)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect::<String>();
+    format!("{}: {}: {}", session_value, task, output)
+}
+
+// Legacy: one row per request, delete on read (single-consumer). New: `?since_id=N` — all rows with id > N, no delete; header `X-Output-Max-Id`.
 pub async fn retrieve_all_out(
     req: HttpRequest,
     db: Data<Arc<Mutex<Connection>>>,
@@ -1616,8 +1542,51 @@ pub async fn retrieve_all_out(
     if let Some(token) = token {
         if let Ok(token_str) = token.to_str() {
             if verify_token(token_str, &db).await {
+                let use_cursor = retrieve_all_out_uses_cursor(&req);
                 let db = db.lock().unwrap();
 
+                if use_cursor {
+                    let since_id = parse_since_id_param(&req);
+                    let mut stmt = match db.prepare(
+                        "SELECT id, token, task, output FROM outputs WHERE id > ?1 ORDER BY id ASC",
+                    ) {
+                        Ok(s) => s,
+                        Err(_) => return HttpResponse::InternalServerError().finish(),
+                    };
+
+                    let output_iter = stmt.query_map(params![since_id], |row| {
+                        let id: i32 = row.get(0)?;
+                        let imp_token: String = row.get(1)?;
+                        let task: String = row.get(2)?;
+                        let output: String = row.get(3)?;
+                        let line = format_output_row(&imp_token, &task, &output);
+                        Ok((id, line))
+                    });
+
+                    let rows: Vec<(i32, String)> = match output_iter {
+                        Ok(iter) => iter.filter_map(|r| r.ok()).collect(),
+                        Err(_) => return HttpResponse::InternalServerError().finish(),
+                    };
+
+                    if rows.is_empty() {
+                        return HttpResponse::Ok()
+                            .insert_header(("X-Output-Max-Id", since_id.to_string()))
+                            .body(CUSTOM_ENGINE.encode("none"));
+                    }
+
+                    let max_id = rows.last().map(|r| r.0).unwrap_or(since_id);
+                    let combined = rows
+                        .into_iter()
+                        .map(|(_, line)| line)
+                        .collect::<Vec<_>>()
+                        .join("\n");
+
+                    return HttpResponse::Ok()
+                        .insert_header(("X-Output-Max-Id", max_id.to_string()))
+                        .body(CUSTOM_ENGINE.encode(&combined));
+                }
+
+                // --- Legacy (no since_id): first row only, delete on read ---
                 let mut stmt = db
                     .prepare("SELECT id, token, task, output FROM outputs ORDER BY id ASC")
                     .expect("Failed to prepare query");
@@ -1628,32 +1597,18 @@ pub async fn retrieve_all_out(
                         let imp_token: String = row.get(1)?;
                         let task: String = row.get(2)?;
                         let output: String = row.get(3)?;
-
-                        let session_value = imp_token
-                            .chars()
-                            .rev()
-                            .take(8)
-                            .collect::<String>()
-                            .chars()
-                            .rev()
-                            .collect::<String>();
-
-                        let final_output = format!("{}: {}: {}", session_value, task, output);
-
+                        let final_output = format_output_row(&imp_token, &task, &output);
                         Ok((id, final_output))
                     })
                     .expect("Failed to execute query");
 
-                let mut final_output = String::new();
+                let mut final_b64 = String::new();
                 let mut id_to_delete = None;
                 for output in output_iter {
-                    if let Ok((id, output)) = output {
-                        //base64 encode output
-                        let output = CUSTOM_ENGINE.encode(output);
-                        final_output = output;
-                        //final_output = final_output.replace("\n", "~~~");
+                    if let Ok((id, line)) = output {
+                        final_b64 = CUSTOM_ENGINE.encode(line);
                         id_to_delete = Some(id);
-                        break; // Assuming you want to return the first output found
+                        break;
                     }
                 }
 
@@ -1662,8 +1617,8 @@ pub async fn retrieve_all_out(
                         .expect("Failed to delete row");
                 }
 
-                if !final_output.is_empty() {
-                    return HttpResponse::Ok().body(final_output);
+                if !final_b64.is_empty() {
+                    return HttpResponse::Ok().body(final_b64);
                 } else {
                     return HttpResponse::NotFound().body(CUSTOM_ENGINE.encode("none"));
                 }
@@ -1821,7 +1776,7 @@ use std::time::Duration;
 type MyResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 //this function creates the other end of the socks tunnel for the imp to connect to
 //it is currently using a hardcoded port which i intend to give control to the operator in the future
-fn socks(ip: String, port: String) {
+fn socks(_ip: String, port: String) {
     // create channels in which to store stream
     let (streams_t, streams_r): (Sender<TcpStream>, Receiver<TcpStream>) = channel();
 
@@ -1954,6 +1909,8 @@ fn handle_streams(fstream: &mut TcpStream, bstream: &mut TcpStream) {
 //add ability to convert dll to shellcode server side
 //this function is used to convert dlls to shellcode. its a hacky way of letting the operator specify a shellcode file without
 //actually having to write custom shellcode ourselves
+// Not wired in `build_imp` after Rust Windows targets were removed; keep for reuse.
+#[allow(dead_code)]
 pub async fn convert_dll_to_shellcode(path: String) -> Vec<u8> {
     // Convert the DLL to shellcode
     let shellcode = dll2shell::shellcode::shellcode_rdi(&path, "Pick", "".to_string());

@@ -12,6 +12,9 @@ PRIVATE_KEY=/home/kirk/anvil/cert/key.pem
 
 set the operator username and password to connect to the server also in config.toml under [users]. default is forge:forge. please change it.
 
+**`outputs` table (team output buffer):** after multiplayer **`since_id`** delivery, the SQLite **`outputs`** table can grow. Set optional **`[server] outputs_max_rows`** in `config.toml` to keep at most that many rows (oldest `id` pruned after each new insert from the implant). **`0` = no cap** (default). See repo **`docs/operator-output-multiplayer.md`**.
+
+
 generating certs for testing:
 
 ```
@@ -55,6 +58,8 @@ cargo build --release
 sudo setcap 'cap_net_bind_service=+ep' ./target/release/anvil (allows anvil to bind to port 443 without running as sudo)
 ./target/release/anvil (run without sudo)
 ```
+
+**Process current directory:** `POST /build_imp` runs `make` with working directory **`../imps/win-stargate`** relative to Anvil’s **current working directory** (not relative to the `anvil` binary file). Typical layout: run from the repo’s **`Anvil/`** directory so `../imps/win-stargate` resolves to the vendored C implant. If you copy only the `anvil` binary elsewhere, either (1) also copy or clone **`imps/win-stargate/`** into the expected place, or (2) set **`TEMPEST_WIN_STARGATE_DIR`** to the absolute path of that folder. The server logs `build_imp: make cwd = ...` on each Windows build so you can confirm the path. On success, it reads **`beacon.exe`** / **`beacon.dll`** / **`beacon.bin`** from that same directory and returns the bytes in the HTTP response (the GUI saves the file under **its** working directory, e.g. `windows_stargate.exe`).
 
 ## Building Implants
 

@@ -651,7 +651,7 @@ async fn authenticate(url: &str, username: &str, password: &str) -> Result<Strin
 }
 
 async fn check_db_and_update_output(url: &str, token: &str, ui_refresh_tx: Sender<String>) {
-    let mut previous_output = String::new();
+    let mut last_output_id: u32 = 0;
     loop {
         if let Ok(imp_info) = fetch_imp_info(url, token).await {
             let initial_interval = 2; // seconds
@@ -681,22 +681,13 @@ async fn check_db_and_update_output(url: &str, token: &str, ui_refresh_tx: Sende
                 }
             }
 
-            //use tokio::time::{sleep, Duration}; //redundant import. remove later
-
             while total_waited < max_total_wait {
-                match retrieve_all_output_with_polling(imp_info.clone(), token, url).await {
+                match retrieve_all_output_with_polling(token, url, &mut last_output_id).await {
                     Ok(outputs) if !outputs.is_empty() => {
                         for output in outputs {
-                            if output == "none" || output == previous_output {
+                            if output == "none" {
                                 continue;
                             }
-                            //let retrieved_output = format!("\n{:?}", (output.clone()));
-                            //preprend a new line to the output without using format! because it changes the output
-                            //let output = format!("\n{}", output);
-
-                            //let output = "\n".to_owned() + &output;
-
-                            //if the output string contains newline characters, then split it into a vector of strings and send each line individually
                             if output.contains("\n") {
                                 let output_vec: Vec<&str> = output.split("\n").collect();
                                 for line in output_vec {
@@ -709,11 +700,6 @@ async fn check_db_and_update_output(url: &str, token: &str, ui_refresh_tx: Sende
                                     eprintln!("Failed to send data: {}", e);
                                 }
                             }
-
-                            /*if let Err(e) = ui_refresh_tx.send(output.clone()).await {
-                                eprintln!("Failed to send data: {}", e);
-                            }*/
-                            previous_output = output;
                         }
                     }
                     _ => {}

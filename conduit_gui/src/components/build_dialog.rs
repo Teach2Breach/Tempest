@@ -4,10 +4,10 @@ use tokio::io::AsyncWriteExt;
 
 #[component]
 pub fn BuildDialog(on_close: EventHandler<()>, base_url: String, token: Option<String>) -> Element {
-    let mut target = use_signal(|| String::from("windows"));
+    let mut target = use_signal(|| String::from("windows_stargate"));
     let mut format = use_signal(|| String::from("exe"));
     let mut target_ip = use_signal(|| String::new());
-    let mut target_port = use_signal(|| String::from("8443"));
+    let mut target_port = use_signal(|| String::from("443"));
     let mut tsleep = use_signal(|| String::from("3"));
     let mut jitter = use_signal(|| String::from("10"));
     let status_msg = use_signal(|| None as Option<String>);
@@ -76,8 +76,8 @@ pub fn BuildDialog(on_close: EventHandler<()>, base_url: String, token: Option<S
         div { class: "modal_backdrop", onclick: move |_| on_close.call(()),
             div { class: "modal", onclick: move |e| e.stop_propagation(),
                 h2 { "Build Implant" }
-                div { class: "field", label { "Target OS" } input { value: "{target}", oninput: move |e| target.set(e.value()) } }
-                div { class: "field", label { "Format" } input { value: "{format}", oninput: move |e| format.set(e.value()) } }
+                div { class: "field", label { "Target OS (e.g. windows_stargate, linux)" } input { value: "{target}", oninput: move |e| target.set(e.value()) } }
+                div { class: "field", label { "Format (windows: exe, dll, raw)" } input { value: "{format}", oninput: move |e| format.set(e.value()) } }
                 div { class: "field", label { "Target IP" } input { value: "{target_ip}", oninput: move |e| target_ip.set(e.value()) } }
                 div { class: "field", label { "Target Port" } input { value: "{target_port}", oninput: move |e| target_port.set(e.value()) } }
                 div { class: "field", label { "Sleep (s)" } input { value: "{tsleep}", oninput: move |e| tsleep.set(e.value()) } }

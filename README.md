@@ -21,8 +21,11 @@ Because this is a research c2, the project moves at a slower pace and runs into 
 
 ##### Check the 'SetupGuide.md' for quick setup (TODO)
 The setup guide is being rewritten for public release.
-For now, the Anvil server has a README that will help you get started standing up the server. With the server built, you 'cargo build --release' conduit, connect to Anvil, and use the build function to build implants. 
-More documentation is on the way.
+For now, the Anvil server has a README that will help you get started standing up the server. With the server built, build **`conduit_gui`** (`cargo build --release` in `conduit_gui/`) as the **primary** operator client, connect to Anvil, and use the build flow to build implants. The **TUI** client in **`conduit/`** is **deprecated**; it remains in-tree for now but is not the focus. More documentation is on the way.
+
+**Build note (IDE / rustup):** If `cargo` reports `error: unknown proxy name: 'Cursor'`, use the project helper so the real toolchain is invoked: `./scripts/cargo-ide.sh build --release` (see `scripts/cargo-ide.sh`).
+
+**Linux system packages (operator GUI):** The Dioxus desktop app (`conduit_gui/`) needs **WebKitGTK 4.1**, **GTK3**, and related `pkg-config` libraries to link. **Authoritative list:** [`conduit_gui/README.md`](conduit_gui/README.md) — copy-paste `apt` / `dnf` / `pacman` install commands, plus notes on what each group is for. A shorter “how to build” page that points here is **[`docs/BUILDING.md`](docs/BUILDING.md)**. The server (`Anvil/`) and legacy TUI (`conduit/`) do not need that stack; a normal Rust install plus `libssl-dev` (Debian) is usually enough for those.
 
 Now I will provide a bit of a roadmap and current architecture.
 
@@ -33,7 +36,7 @@ Now I will provide a bit of a roadmap and current architecture.
    - actix.rs & tokio
    - https
    - api for imps (implants)
-   - api for conduit (hacker TUI client)
+   - api for operator clients (`conduit_gui`; legacy TUI in `conduit/`)
    - internal functions (implant builder + shellcode generation)
    - sqlite db (rusqlite)
 
@@ -45,14 +48,13 @@ Now I will provide a bit of a roadmap and current architecture.
    - designed with OPSEC in mind. no post-ex module bloat
    - modular builds, moving toward giving operators control over granular options
 
-3. TUI Client: **conduit**
+3. **Operator GUI: `conduit_gui`** (primary)
    
-   - main way of interacting with the server
-   - Terminal User Interface (TUI) with realtime dashboard display
-   - user friendly
-   - cross-platform
-   - looks cool to your old hacker friends
-   - scrollable fields (PgUp + PgDn on implants field. Up + Down for output field)
+   - **Dioxus** desktop app — main way to interact with the server going forward; see `gui_plan.md` and `conduit_gui/README.md` (Linux deps + `cargo-ide.sh`).
+
+4. **TUI: `conduit`** (deprecated)
+   
+   - Legacy ratatui client; still builds but is **not** the development focus. Prefer **`conduit_gui`**.
 
 AI modules - TBD
 

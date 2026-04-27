@@ -1,5 +1,6 @@
 use dioxus::prelude::*;
 use dioxus_desktop::{self, Config, WindowBuilder};
+use dioxus_desktop::tao::window::ResizeDirection;
 use dioxus_desktop::use_window;
 use dioxus_desktop::launch::launch;
 use std::collections::VecDeque;
@@ -22,19 +23,44 @@ enum Route {
 }
 
 #[derive(Clone, PartialEq)]
-struct AppState {
+pub struct AppState {
     base_url: Signal<String>,
     token: Signal<Option<String>>,
     route: Signal<Route>,
     selected_session: Signal<Option<String>>,
     connection_msg: Signal<Option<String>>,
     output_lines: Signal<VecDeque<String>>,
+    /// Monotonic output row cursor for `/retrieve_all_out?since_id=` (see upgrade-plan §2.9).
+    output_cursor: Signal<u32>,
+    /// D.3: short error/info banner (auto-dismiss, see `notify.rs`).
+    toast: Signal<Option<String>>,
+}
+
+const TOAST_TTL_SECS: u64 = 6;
+
+/// D.3: banner at top of window; auto-dismiss.
+pub fn show_toast(state: &AppState, msg: impl Into<String>) {
+    let s: String = msg.into();
+    let mut st = state.clone();
+    *st.toast.write() = Some(s.clone());
+    spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(TOAST_TTL_SECS)).await;
+        if st
+            .toast
+            .read()
+            .as_ref()
+            .is_some_and(|t| t == &s)
+        {
+            *st.toast.write() = None;
+        }
+    });
 }
 
 fn main() {
     let window = WindowBuilder::new()
         .with_title("Tempest Conduit GUI")
         .with_decorations(false)
+        .with_resizable(true)
         .with_inner_size(dioxus_desktop::LogicalSize::new(1280.0, 800.0))
         .with_min_inner_size(dioxus_desktop::LogicalSize::new(1024.0, 640.0));
     let cfg = Config::new().with_window(window);
@@ -50,9 +76,22 @@ fn App() -> Element {
     let selected_session = use_signal(|| None as Option<String>);
     let connection_msg = use_signal(|| None as Option<String>);
     let output_lines = use_signal(|| VecDeque::<String>::new());
+    let output_cursor = use_signal(|| 0u32);
+    let toast = use_signal(|| None as Option<String>);
     let win = use_window();
+    let win_title = win.clone();
+    let win_spacer = win.clone();
 
-    let state = AppState { base_url, token, route, selected_session, connection_msg, output_lines };
+    let state = AppState {
+        base_url,
+        token,
+        route,
+        selected_session,
+        connection_msg,
+        output_lines,
+        output_cursor,
+        toast,
+    };
 
     // local login signals
     let mut url = use_signal(|| String::new());
@@ -76,6 +115,7 @@ fn App() -> Element {
                     Ok(tok) => {
                         *state_clone.base_url.write() = base;
                         *state_clone.token.write() = Some(tok);
+                        *state_clone.toast.write() = None;
                         *state_clone.route.write() = Route::Dashboard;
                     }
                     Err(e) => {
@@ -89,8 +129,15 @@ fn App() -> Element {
     rsx! {
         style { "{include_str!(\"./styles.css\")}", }
         div { class: "root",
+            if let Some(t) = &*state.toast.read() {
+                div { class: "toast_banner", "{t}" }
+            }
             header { class: "app_header",
-                h1 { "Tempest Conduit GUI" }
+                h1 {
+                    onmousedown: move |_| win_title.drag(),
+                    "Tempest Conduit GUI"
+                }
+                div { class: "titlebar_spacer", onmousedown: move |_| win_spacer.drag() }
                 {
                     let win_min = win.clone();
                     let win_close = win.clone();
@@ -109,6 +156,26 @@ fn App() -> Element {
                         }
                     )
                 }
+            }
+            {
+                let wn = win.clone();
+                let ws = win.clone();
+                let we = win.clone();
+                let ww = win.clone();
+                let wne = win.clone();
+                let wnw = win.clone();
+                let wse = win.clone();
+                let wsw = win.clone();
+                rsx!(
+                    div { class: "resize_edge rz_n", onmousedown: move |_| { let _ = wn.drag_resize_window(ResizeDirection::North); } }
+                    div { class: "resize_edge rz_s", onmousedown: move |_| { let _ = ws.drag_resize_window(ResizeDirection::South); } }
+                    div { class: "resize_edge rz_e", onmousedown: move |_| { let _ = we.drag_resize_window(ResizeDirection::East); } }
+                    div { class: "resize_edge rz_w", onmousedown: move |_| { let _ = ww.drag_resize_window(ResizeDirection::West); } }
+                    div { class: "resize_edge rz_ne", onmousedown: move |_| { let _ = wne.drag_resize_window(ResizeDirection::NorthEast); } }
+                    div { class: "resize_edge rz_nw", onmousedown: move |_| { let _ = wnw.drag_resize_window(ResizeDirection::NorthWest); } }
+                    div { class: "resize_edge rz_se", onmousedown: move |_| { let _ = wse.drag_resize_window(ResizeDirection::SouthEast); } }
+                    div { class: "resize_edge rz_sw", onmousedown: move |_| { let _ = wsw.drag_resize_window(ResizeDirection::SouthWest); } }
+                )
             }
             main { class: "app_main",
                 {

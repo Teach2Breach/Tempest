@@ -1,0 +1,7 @@
+/*
+ * The build does not include this file.
+ *
+ * `include/tempest_bootstrap.h` is generated automatically by the Makefile from
+ * the environment variable AES_KEY (set by Anvil when it loads aes_key.bin).
+ * `build_imp` passes AES_KEY into `make`; no manual editing of implant sources.
+ */

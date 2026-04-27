@@ -1,5 +1,7 @@
+use std::time::{Duration, Instant};
+
 use dioxus::prelude::*;
-use crate::{AppState, Route};
+use crate::{show_toast, AppState, Route};
 use crate::services::api;
 use crate::services::output::{decode_base64_urlsafe_no_pad, process_retrieved_output, try_handle_getfile};
 
@@ -30,7 +32,7 @@ pub fn SessionView(state: AppState, session_id: String, sleep: String, os: Strin
             if text.is_empty() { return; }
             let task_text = text.clone();
             let sid2 = sid_outer.clone();
-            let state_for_async = state_clone.clone();
+            let mut state_for_async = state_clone.clone();
             let first = task_text.split_whitespace().next().unwrap_or("");
             match first {
                 "help" => {
@@ -53,7 +55,24 @@ pub fn SessionView(state: AppState, session_id: String, sleep: String, os: Strin
                 _ => {
                     spawn(async move {
                         if let (Some(tok), url) = (state_for_async.token.read().clone(), state_for_async.base_url.read().clone()) {
-                            let _ = crate::services::api::issue_task(&url, tok.as_str(), &sid2, task_text.as_str()).await;
+                            match crate::services::session_cmd::issue_session_task(
+                                &url,
+                                tok.as_str(),
+                                &sid2,
+                                task_text.as_str(),
+                            )
+                            .await
+                            {
+                                Ok(()) => {}
+                                Err(e) => {
+                                    show_toast(
+                                        &state_for_async,
+                                        format!("Session command failed: {e}"),
+                                    );
+                                    let mut g = state_for_async.output_lines.write();
+                                    g.push_back(format!("[session] {e}"));
+                                }
+                            }
                         }
                     });
                 }
@@ -64,36 +83,64 @@ pub fn SessionView(state: AppState, session_id: String, sleep: String, os: Strin
 
     let lines = state.output_lines.read().clone();
 
-    // Poll output periodically
+    let line_prefix = format!("{}:", short_id);
+
+    // Poll output periodically (`since_id` + team-wide server buffer — upgrade-plan §2.9)
     {
         let state_for_cfg = state.clone();
         let mut out_sig = state.output_lines.clone();
-        use_future(move || async move {
+        let prefix = line_prefix.clone();
+        use_future(move || {
+            let pfx = prefix.clone();
+            let mut poll_st = state_for_cfg.clone();
+            async move {
+            let mut last_poll_notify = Instant::now() - Duration::from_secs(600);
             loop {
-                if let (Some(tok), url) = (state_for_cfg.token.read().clone(), state_for_cfg.base_url.read().clone()) {
-                    match api::retrieve_all_out(&url, tok.as_str()).await {
-                        Ok(raw_b64) => {
+                if let (Some(tok), url) = (poll_st.token.read().clone(), poll_st.base_url.read().clone()) {
+                    let since = *poll_st.output_cursor.read();
+                    match api::retrieve_all_out(&url, tok.as_str(), since).await {
+                        Ok((raw_b64, max_id)) => {
+                            *poll_st.output_cursor.write() = max_id;
                             if let Some(decoded) = decode_base64_urlsafe_no_pad(&raw_b64) {
-                                if let Some(saved_msg) = try_handle_getfile(&decoded) {
-                                    let mut guard = out_sig.write();
-                                    guard.push_back(saved_msg);
-                                }
-                                let lines_vec = process_retrieved_output(&decoded);
-                                {
-                                    let mut guard = out_sig.write();
-                                    for line in lines_vec {
-                                        guard.push_back(line);
+                                let decoded = decoded.trim();
+                                if decoded == "none" || decoded.is_empty() {
+                                    // no new output
+                                } else {
+                                    for line in process_retrieved_output(decoded) {
+                                        let line = line.trim_end();
+                                        if line.is_empty() {
+                                            continue;
+                                        }
+                                        if !line.starts_with(&pfx) {
+                                            continue;
+                                        }
+                                        if let Some(saved_msg) = try_handle_getfile(line) {
+                                            let mut guard = out_sig.write();
+                                            guard.push_back(saved_msg);
+                                        } else {
+                                            let mut guard = out_sig.write();
+                                            guard.push_back(line.to_string());
+                                        }
                                     }
                                 }
-                                // Auto-scroll handled client-side via CSS/overflow; UI frameworks without eval will scroll on next paint.
                             }
                         }
-                        Err(_) => {
-                            // optionally surface errors later
+                        Err(e) => {
+                            let now = Instant::now();
+                            if now.duration_since(last_poll_notify) >= Duration::from_secs(15) {
+                                last_poll_notify = now;
+                                show_toast(
+                                    &poll_st,
+                                    format!("Output poll failed: {e}"),
+                                );
+                                let mut guard = out_sig.write();
+                                guard.push_back(format!("[output poll] {e}"));
+                            }
                         }
                     }
                 }
                 tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+            }
             }
         });
     }
@@ -138,7 +185,7 @@ pub fn SessionView(state: AppState, session_id: String, sleep: String, os: Strin
                 }
             }
             div { class: "session_input",
-                input { r#type: "text", value: "{command}", oninput: move |e| command.set(e.value()), placeholder: "Enter command..." }
+                input { r#type: "text", value: "{command}", oninput: move |e| command.set(e.value()), placeholder: "Command (bof, sendfile, inject, runpe, ...)" }
                 button { onclick: on_send, "Send" }
             }
             if *show_sleep.read() { 

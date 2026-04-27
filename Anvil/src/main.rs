@@ -310,6 +310,13 @@ async fn main() -> std::io::Result<()> {
         .get("server.conduit_port")
         .expect("Failed to get conduit_port from config");
 
+    // Q7: cap `outputs` table size (0 = disabled). See `routes::prune_outputs_if_needed`.
+    let outputs_max_rows: u64 = settings
+        .get_int("server.outputs_max_rows")
+        .map(|i| (i.max(0)) as u64)
+        .unwrap_or(0);
+    std::env::set_var("TEMPEST_OUTPUTS_MAX_ROWS", outputs_max_rows.to_string());
+
     // server for port 443
     let implant_server = thread::spawn(move || {
         let sys = actix_rt::System::new;

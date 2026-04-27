@@ -1,0 +1,3 @@
+LIBRARY beacon
+EXPORTS
+    StartW @1
