@@ -5,18 +5,12 @@ kit/
 techniques/
 upgrade-plan.md
 /docs/*
-<<<<<<< HEAD
 !/docs/
 !/docs/MANUAL_WINDOWS_TEST.md
 /scripts/*
 !/scripts/
 !/scripts/windows-beacon-smoke.ps1
 !/scripts/mock_imds.py
-=======
-!/docs/MANUAL_WINDOWS_TEST.md
-/scripts/*
-!/scripts/windows-beacon-smoke.ps1
->>>>>>> origin/gui-dev
 gui_plan.md
 techplan.md
 imps/win-stargate/include/tempest_bootstrap.h
