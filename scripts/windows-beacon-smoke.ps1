@@ -2,6 +2,15 @@
 # Used by .github/workflows/windows-smoke.yml and documented for manual lab runs.
 
 $ErrorActionPreference = "Stop"
+
+function Get-WebResponseText($Response) {
+    $content = $Response.Content
+    if ($content -is [byte[]]) {
+        return [Text.Encoding]::UTF8.GetString($content)
+    }
+    return [string]$content
+}
+
 $RepoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $AnvilDir = Join-Path $RepoRoot "Anvil"
 $WinDir = Join-Path $RepoRoot "imps\win-stargate"
@@ -54,29 +63,29 @@ toolchain = "1.85.0"
     Remove-Item -ErrorAction SilentlyContinue (Join-Path $AnvilDir "my_database.db")
 
     $AnvilLog = Join-Path $WorkDir "anvil.log"
+    $AnvilErrLog = Join-Path $WorkDir "anvil.err.log"
     $AnvilProc = Start-Process -FilePath (Join-Path $AnvilDir "target\release\anvil.exe") `
-        -WorkingDirectory $AnvilDir -PassThru -RedirectStandardOutput $AnvilLog -RedirectStandardError $AnvilLog
+        -WorkingDirectory $AnvilDir -PassThru -RedirectStandardOutput $AnvilLog -RedirectStandardError $AnvilErrLog
     Start-Sleep -Seconds 4
     if ($AnvilProc.HasExited) {
-        Get-Content $AnvilLog
+        Get-Content $AnvilLog, $AnvilErrLog -ErrorAction SilentlyContinue
         throw "Anvil exited early"
     }
 
     # Read AES_KEY from log (Anvil prints encoded AES key at startup)
-    $aesLine = Select-String -Path $AnvilLog -Pattern "encoded AES key: (\S+)" | Select-Object -Last 1
+    $aesLine = Select-String -Path $AnvilLog, $AnvilErrLog -Pattern "encoded AES key: (\S+)" | Select-Object -Last 1
     if (-not $aesLine) {
-        Get-Content $AnvilLog
+        Get-Content $AnvilLog, $AnvilErrLog -ErrorAction SilentlyContinue
         throw "Could not read AES_KEY from Anvil log"
     }
     $AesKey = $aesLine.Matches.Groups[1].Value
     if ($AesKey.Length -ne 43) { throw "Unexpected AES_KEY length $($AesKey.Length)" }
 
-    # Operator auth
+    # Operator auth (self-signed cert; PS 7 needs -SkipCertificateCheck)
     $pair = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("forge:forge"))
-    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
     $auth = Invoke-WebRequest -Uri "https://127.0.0.1:${ConduitPort}/authenticate" `
-        -Method POST -Headers @{ Authorization = "Basic $pair" } -UseBasicParsing
-    $OpToken = $auth.Content.Trim()
+        -Method POST -Headers @{ Authorization = "Basic $pair" } -UseBasicParsing -SkipCertificateCheck
+    $OpToken = (Get-WebResponseText $auth).Trim()
 
     # Build implant via build_imp (registers UUID in DB)
     $buildHeaders = @{
@@ -90,7 +99,7 @@ toolchain = "1.85.0"
     }
     $BeaconPath = Join-Path $WorkDir "beacon.exe"
     Invoke-WebRequest -Uri "https://127.0.0.1:${ConduitPort}/build_imp" `
-        -Method POST -Headers $buildHeaders -OutFile $BeaconPath -UseBasicParsing
+        -Method POST -Headers $buildHeaders -OutFile $BeaconPath -UseBasicParsing -SkipCertificateCheck
     if ((Get-Item $BeaconPath).Length -lt 4096) { throw "beacon.exe too small" }
 
     # Run beacon (ignore TLS errors on implant channel too)
@@ -98,10 +107,11 @@ toolchain = "1.85.0"
     Start-Sleep -Seconds 8
 
     $imps = Invoke-WebRequest -Uri "https://127.0.0.1:${ConduitPort}/imps" `
-        -Headers @{ "X-Token" = $OpToken } -UseBasicParsing
-    Write-Host "imps response: $($imps.Content)"
-    if ($imps.Content -notmatch "windows") {
-        throw "Expected implant check-in on /imps; got: $($imps.Content)"
+        -Headers @{ "X-Token" = $OpToken } -UseBasicParsing -SkipCertificateCheck
+    $impsBody = Get-WebResponseText $imps
+    Write-Host "imps response: $impsBody"
+    if ($impsBody -notmatch "windows") {
+        throw "Expected implant check-in on /imps; got: $impsBody"
     }
 
     Write-Host "PASS: win-stargate beacon checked in"

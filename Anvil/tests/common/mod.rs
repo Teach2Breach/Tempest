@@ -26,7 +26,6 @@ impl TestHarness {
         }];
         let db = init_database(&db_path, &users).expect("init_database");
         let (aes_key, aes_key_b64) = generate_aes_key_material().expect("aes key");
-        std::env::set_var("AES_KEY", &aes_key_b64);
         std::env::set_var("TEMPEST_OUTPUTS_MAX_ROWS", "0");
         Self {
             _dir: dir,
@@ -51,8 +50,9 @@ impl TestHarness {
         Error = actix_web::Error,
     > {
         let db = self.db.clone();
+        let aes_key_b64 = self.aes_key_b64.clone();
         test::init_service(App::new().configure(move |cfg| {
-            configure_implant_routes(cfg, db.clone());
+            configure_implant_routes(cfg, db.clone(), Some(aes_key_b64.clone()));
         }))
         .await
     }
@@ -63,8 +63,9 @@ impl TestHarness {
         Error = actix_web::Error,
     > {
         let db = self.db.clone();
+        let aes_key_b64 = self.aes_key_b64.clone();
         test::init_service(App::new().configure(move |cfg| {
-            configure_conduit_routes(cfg, db.clone());
+            configure_conduit_routes(cfg, db.clone(), Some(aes_key_b64.clone()));
         }))
         .await
     }

@@ -29,6 +29,17 @@ jobs:
         with:
           workspaces: Anvil
 
+      - name: Install OpenSSL (MSVC)
+        shell: pwsh
+        run: |
+          choco install openssl.light --no-progress -y
+          $root = "C:\Program Files\OpenSSL"
+          $libcrypto = Get-ChildItem -Path $root -Recurse -Filter "libcrypto.lib" | Select-Object -First 1
+          if (-not $libcrypto) { throw "libcrypto.lib not found under $root" }
+          echo "OPENSSL_DIR=$root" >> $env:GITHUB_ENV
+          echo "OPENSSL_LIB_DIR=$($libcrypto.DirectoryName)" >> $env:GITHUB_ENV
+          echo "OPENSSL_INCLUDE_DIR=$root\include" >> $env:GITHUB_ENV
+
       - name: Run Windows smoke script
         shell: pwsh
         run: ./scripts/windows-beacon-smoke.ps1
