@@ -2,6 +2,15 @@
 # Used by .github/workflows/windows-smoke.yml and documented for manual lab runs.
 
 $ErrorActionPreference = "Stop"
+
+function Get-WebResponseText($Response) {
+    $content = $Response.Content
+    if ($content -is [byte[]]) {
+        return [Text.Encoding]::UTF8.GetString($content)
+    }
+    return [string]$content
+}
+
 $RepoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $AnvilDir = Join-Path $RepoRoot "Anvil"
 $WinDir = Join-Path $RepoRoot "imps\win-stargate"
@@ -76,7 +85,7 @@ toolchain = "1.85.0"
     $pair = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("forge:forge"))
     $auth = Invoke-WebRequest -Uri "https://127.0.0.1:${ConduitPort}/authenticate" `
         -Method POST -Headers @{ Authorization = "Basic $pair" } -UseBasicParsing -SkipCertificateCheck
-    $OpToken = $auth.Content.Trim()
+    $OpToken = (Get-WebResponseText $auth).Trim()
 
     # Build implant via build_imp (registers UUID in DB)
     $buildHeaders = @{
@@ -99,9 +108,10 @@ toolchain = "1.85.0"
 
     $imps = Invoke-WebRequest -Uri "https://127.0.0.1:${ConduitPort}/imps" `
         -Headers @{ "X-Token" = $OpToken } -UseBasicParsing -SkipCertificateCheck
-    Write-Host "imps response: $($imps.Content)"
-    if ($imps.Content -notmatch "windows") {
-        throw "Expected implant check-in on /imps; got: $($imps.Content)"
+    $impsBody = Get-WebResponseText $imps
+    Write-Host "imps response: $impsBody"
+    if ($impsBody -notmatch "windows") {
+        throw "Expected implant check-in on /imps; got: $impsBody"
     }
 
     Write-Host "PASS: win-stargate beacon checked in"
