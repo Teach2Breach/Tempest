@@ -29,6 +29,14 @@ jobs:
         with:
           workspaces: Anvil
 
+      - name: Install OpenSSL (MSVC)
+        shell: pwsh
+        run: |
+          choco install openssl.light --no-progress -y
+          echo "OPENSSL_DIR=C:\Program Files\OpenSSL-Win64" >> $env:GITHUB_ENV
+          echo "OPENSSL_LIB_DIR=C:\Program Files\OpenSSL-Win64\lib" >> $env:GITHUB_ENV
+          echo "OPENSSL_INCLUDE_DIR=C:\Program Files\OpenSSL-Win64\include" >> $env:GITHUB_ENV
+
       - name: Run Windows smoke script
         shell: pwsh
         run: ./scripts/windows-beacon-smoke.ps1
