@@ -54,18 +54,19 @@ toolchain = "1.85.0"
     Remove-Item -ErrorAction SilentlyContinue (Join-Path $AnvilDir "my_database.db")
 
     $AnvilLog = Join-Path $WorkDir "anvil.log"
+    $AnvilErrLog = Join-Path $WorkDir "anvil.err.log"
     $AnvilProc = Start-Process -FilePath (Join-Path $AnvilDir "target\release\anvil.exe") `
-        -WorkingDirectory $AnvilDir -PassThru -RedirectStandardOutput $AnvilLog -RedirectStandardError $AnvilLog
+        -WorkingDirectory $AnvilDir -PassThru -RedirectStandardOutput $AnvilLog -RedirectStandardError $AnvilErrLog
     Start-Sleep -Seconds 4
     if ($AnvilProc.HasExited) {
-        Get-Content $AnvilLog
+        Get-Content $AnvilLog, $AnvilErrLog -ErrorAction SilentlyContinue
         throw "Anvil exited early"
     }
 
     # Read AES_KEY from log (Anvil prints encoded AES key at startup)
-    $aesLine = Select-String -Path $AnvilLog -Pattern "encoded AES key: (\S+)" | Select-Object -Last 1
+    $aesLine = Select-String -Path $AnvilLog, $AnvilErrLog -Pattern "encoded AES key: (\S+)" | Select-Object -Last 1
     if (-not $aesLine) {
-        Get-Content $AnvilLog
+        Get-Content $AnvilLog, $AnvilErrLog -ErrorAction SilentlyContinue
         throw "Could not read AES_KEY from Anvil log"
     }
     $AesKey = $aesLine.Matches.Groups[1].Value
