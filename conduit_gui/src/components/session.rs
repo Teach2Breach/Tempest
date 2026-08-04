@@ -41,7 +41,7 @@ pub fn SessionView(state: AppState, session_id: String, sleep: String, os: Strin
                         if os_lower.contains("windows") {
                             "Available commands:\nhelp - displays this help information\r\nwhoami - OPSEC 'safe' priv check\r\nipconfig - OPSEC 'safe' ipconfig\r\nps - list user processes\r\ncd <dir> - change directory\r\npwd - print working directory\r\nls <dir> - list directory contents\r\ncatfile <remote_file> - read file content directly\r\ngetfile <remote_file> - download file to local disk\r\nsendfile <local_filepath> - upload file to implant\r\ncmd <cmd> - run cmd command\r\npwsh <cmd> - run powershell command\r\nwmi <query> - run WMI query\r\nbof <file> - run BOF file\r\ninject <pid> <shellcode.bin> - inject shellcode into process\r\nrunpe <file> - run dotnet PE file\r\nsocks <ip> <port> - start socks proxy\r\nsleep <seconds> <jitter percentage> - change sleep.\r\nkill - kill the implant\r\nq or quit - exit imp session\r"
                         } else if os_lower.contains("linux") {
-                            "Available commands:\nhelp - displays this help information\r\nwhoami - get username\r\ncd <dir> - change directory\r\npwd - print working directory\r\nls <dir> - list directory contents\r\ncatfile <remote_file> - read file content directly\r\ngetfile <remote_file> - download file to local disk\r\nsendfile <local_filepath> - upload file to implant\r\nsh <cmd> - run shell command\r\nsocks <ip> <port> - start socks proxy\r\nsleep <seconds> <jitter percentage> - change sleep.\r\nkill - kill the implant\r\nq or quit - exit imp session\r"
+                            "Available commands:\nhelp - displays this help information\r\nwhoami - get username\r\naws_imds - query AWS IMDS (169.254.169.254) for IAM credentials\r\ncd <dir> - change directory\r\npwd - print working directory\r\nls <dir> - list directory contents\r\ncatfile <remote_file> - read file content directly\r\ngetfile <remote_file> - download file to local disk\r\nsendfile <local_filepath> - upload file to implant\r\nsh <cmd> - run shell command\r\nsocks <ip> <port> - start socks proxy\r\nsleep <seconds> <jitter percentage> - change sleep.\r\nkill - kill the implant\r\nq or quit - exit imp session\r"
                         } else {
                             "Available commands:\nhelp - displays this help information\r\nwhoami\r\nipconfig\r\nps\r\ncd/pwd/ls/catfile/getfile\r\nsendfile\r\ncmd/pwsh/sh/wmi\r\nbof/inject/runpe\r\nsocks\r\nsleep\r\nkill\r\nq or quit\r"
                         }
@@ -111,15 +111,23 @@ pub fn SessionView(state: AppState, session_id: String, sleep: String, os: Strin
                                         if line.is_empty() {
                                             continue;
                                         }
-                                        if !line.starts_with(&pfx) {
-                                            continue;
-                                        }
-                                        if let Some(saved_msg) = try_handle_getfile(line) {
-                                            let mut guard = out_sig.write();
-                                            guard.push_back(saved_msg);
+                                        if line.starts_with(&pfx) {
+                                            if let Some(saved_msg) = try_handle_getfile(line) {
+                                                let mut guard = out_sig.write();
+                                                guard.push_back(saved_msg);
+                                            } else {
+                                                let mut guard = out_sig.write();
+                                                guard.push_back(line.to_string());
+                                            }
                                         } else {
+                                            // Multiline task output: continuation lines lack the session prefix.
                                             let mut guard = out_sig.write();
-                                            guard.push_back(line.to_string());
+                                            if let Some(last) = guard.back_mut() {
+                                                last.push('\n');
+                                                last.push_str(line);
+                                            } else {
+                                                guard.push_back(line.to_string());
+                                            }
                                         }
                                     }
                                 }

