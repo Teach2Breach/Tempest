@@ -72,11 +72,10 @@ toolchain = "1.85.0"
     $AesKey = $aesLine.Matches.Groups[1].Value
     if ($AesKey.Length -ne 43) { throw "Unexpected AES_KEY length $($AesKey.Length)" }
 
-    # Operator auth
+    # Operator auth (self-signed cert; PS 7 needs -SkipCertificateCheck)
     $pair = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("forge:forge"))
-    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
     $auth = Invoke-WebRequest -Uri "https://127.0.0.1:${ConduitPort}/authenticate" `
-        -Method POST -Headers @{ Authorization = "Basic $pair" } -UseBasicParsing
+        -Method POST -Headers @{ Authorization = "Basic $pair" } -UseBasicParsing -SkipCertificateCheck
     $OpToken = $auth.Content.Trim()
 
     # Build implant via build_imp (registers UUID in DB)
@@ -91,7 +90,7 @@ toolchain = "1.85.0"
     }
     $BeaconPath = Join-Path $WorkDir "beacon.exe"
     Invoke-WebRequest -Uri "https://127.0.0.1:${ConduitPort}/build_imp" `
-        -Method POST -Headers $buildHeaders -OutFile $BeaconPath -UseBasicParsing
+        -Method POST -Headers $buildHeaders -OutFile $BeaconPath -UseBasicParsing -SkipCertificateCheck
     if ((Get-Item $BeaconPath).Length -lt 4096) { throw "beacon.exe too small" }
 
     # Run beacon (ignore TLS errors on implant channel too)
@@ -99,7 +98,7 @@ toolchain = "1.85.0"
     Start-Sleep -Seconds 8
 
     $imps = Invoke-WebRequest -Uri "https://127.0.0.1:${ConduitPort}/imps" `
-        -Headers @{ "X-Token" = $OpToken } -UseBasicParsing
+        -Headers @{ "X-Token" = $OpToken } -UseBasicParsing -SkipCertificateCheck
     Write-Host "imps response: $($imps.Content)"
     if ($imps.Content -notmatch "windows") {
         throw "Expected implant check-in on /imps; got: $($imps.Content)"
