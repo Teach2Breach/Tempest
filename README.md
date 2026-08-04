@@ -27,7 +27,22 @@ For now, the Anvil server has a README that will help you get started standing u
 
 **Linux system packages (operator GUI):** The Dioxus desktop app (`conduit_gui/`) needs **WebKitGTK 4.1**, **GTK3**, and related `pkg-config` libraries to link. **Authoritative list:** [`conduit_gui/README.md`](conduit_gui/README.md) — copy-paste `apt` / `dnf` / `pacman` install commands, plus notes on what each group is for. A shorter “how to build” page that points here is **[`docs/BUILDING.md`](docs/BUILDING.md)**. The server (`Anvil/`) and legacy TUI (`conduit/`) do not need that stack; a normal Rust install plus `libssl-dev` (Debian) is usually enough for those.
 
-Now I will provide a bit of a roadmap and current architecture.
+## Automated tests
+
+From `Anvil/` (Linux; install `libssl-dev`, `pkg-config`, and `mingw-w64` for full coverage):
+
+```bash
+cargo test
+```
+
+| Test suite | Covers |
+|------------|--------|
+| `wire_protocol` | Encrypted implant `POST /js` registration, `/index` sleep update, operator `/imps` |
+| `authenticate` | Operator Basic auth |
+| `build_win_stargate` | MinGW `make exe` and `POST /build_imp` (skipped if MinGW missing) |
+
+**Windows E2E** (real `beacon.exe` check-in): GitHub Actions workflow `windows-smoke.yml`, or run `scripts/windows-beacon-smoke.ps1` on a Windows host. Manual lab steps: [`docs/MANUAL_WINDOWS_TEST.md`](docs/MANUAL_WINDOWS_TEST.md).
+
 
 ##### Current Tech Stack: (100% Rust)
 

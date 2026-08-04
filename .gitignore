@@ -4,8 +4,10 @@
 kit/
 techniques/
 upgrade-plan.md
-/docs
-/scripts
+/docs/*
+!/docs/MANUAL_WINDOWS_TEST.md
+/scripts/*
+!/scripts/windows-beacon-smoke.ps1
 gui_plan.md
 techplan.md
 imps/win-stargate/include/tempest_bootstrap.h

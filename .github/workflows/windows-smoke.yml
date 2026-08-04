@@ -1,0 +1,34 @@
+name: Windows beacon smoke
+
+on:
+  push:
+    branches: [main, gui-dev, "cursor/**"]
+  pull_request:
+    branches: [main, gui-dev]
+  workflow_dispatch:
+
+jobs:
+  win-stargate-e2e:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-make
+            mingw-w64-x86_64-openssl
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: Anvil
+
+      - name: Run Windows smoke script
+        shell: pwsh
+        run: ./scripts/windows-beacon-smoke.ps1

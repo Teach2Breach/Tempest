@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main, gui-dev, "cursor/**"]
+  pull_request:
+    branches: [main, gui-dev]
+
+jobs:
+  anvil-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            pkg-config libssl-dev build-essential \
+            mingw-w64 make
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: Anvil
+
+      - name: Unit + integration tests
+        working-directory: Anvil
+        run: cargo test --verbose
+
+  conduit-gui-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install GTK/WebKit (link check only)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            pkg-config libssl-dev build-essential \
+            libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev libxdo-dev librsvg2-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: conduit_gui
+
+      - name: cargo check conduit_gui
+        working-directory: conduit_gui
+        run: cargo check
