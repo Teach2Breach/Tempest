@@ -17,33 +17,15 @@
 .intel_syntax noprefix
 .data
 
-# ── Global SSN storage (set by C code during morpheus_init) ──────────
-
-.globl g_ssn_create_timer
-.globl g_ssn_set_timer
-.globl g_ssn_wait
-.globl g_ssn_close
-.globl g_ssn_create_event
-.globl g_ssn_protect
-.globl g_ssn_yield
-.globl g_ssn_query_perf
-
-g_ssn_create_timer:
-    .long 0
-g_ssn_set_timer:
-    .long 0
-g_ssn_wait:
-    .long 0
-g_ssn_close:
-    .long 0
-g_ssn_create_event:
-    .long 0
-g_ssn_protect:
-    .long 0
-g_ssn_yield:
-    .long 0
-g_ssn_query_perf:
-    .long 0
+# SSN dwords live in morpheus.c (RIP-relative from both C and these stubs).
+.extern g_ssn_create_timer
+.extern g_ssn_set_timer
+.extern g_ssn_wait
+.extern g_ssn_close
+.extern g_ssn_create_event
+.extern g_ssn_protect
+.extern g_ssn_yield
+.extern g_ssn_query_perf
 
 .text
 

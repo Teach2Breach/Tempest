@@ -33,7 +33,17 @@ static HMODULE       g_ntdll = NULL;
 /* Shared fallback gadget — found once during sg_init().
  * Per-function gadgets (stored in SgSyscall.gadget) are preferred. */
 /* Non-static so bm_spoof.c can access for gadget selection */
-void         *g_shared_gadget = NULL;
+void         *g_shared_gadget __attribute__((visibility("hidden"))) = NULL;
+
+void *sg_get_shared_gadget(void)
+{
+    return g_shared_gadget;
+}
+
+void sg_set_shared_gadget(void *p)
+{
+    g_shared_gadget = p;
+}
 
 /* ========================================================================
  * Initialization
@@ -59,7 +69,7 @@ int sg_init(SgConfig *config)
     /* Step 2: If indirect mode, find the shared syscall;ret gadget */
     if (mode == SG_INDIRECT) {
         g_shared_gadget = find_syscall_gadget(g_ntdll);
-        g_syscall_gadget = g_shared_gadget;
+        sg_set_syscall_gadget(g_shared_gadget);
         if (!g_shared_gadget) {
             /* Gadget not found — fall back to direct */
             mode = SG_DIRECT;
@@ -78,7 +88,7 @@ void sg_cleanup(void)
     g_ntdll = NULL;
     g_mode = SG_INDIRECT;
     g_shared_gadget = NULL;
-    g_syscall_gadget = NULL;
+    sg_set_syscall_gadget(NULL);
 }
 
 int sg_is_initialized(void) { return g_initialized; }
@@ -153,8 +163,8 @@ int sg_resolve_hash(DWORD func_hash, SgSyscall *out)
 /* Set the per-function gadget for indirect mode. Falls back to shared. */
 #define SG_SET_GADGET(sc) \
     do { \
-        if ((sc)->gadget) g_syscall_gadget = (sc)->gadget; \
-        else if (g_shared_gadget) g_syscall_gadget = g_shared_gadget; \
+        if ((sc)->gadget) sg_set_syscall_gadget((sc)->gadget); \
+        else { void *_g = sg_get_shared_gadget(); if (_g) sg_set_syscall_gadget(_g); } \
     } while (0)
 
 NTSTATUS sg_call_0(SgSyscall *sc)

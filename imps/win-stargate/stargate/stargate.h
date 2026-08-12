@@ -225,6 +225,9 @@ DWORD sg_extract_ssn(void *func_addr);
 HMODULE sg_get_ntdll_base(void);
 SgSyscallMode sg_get_syscall_mode(void);
 
+void *sg_get_shared_gadget(void);
+void sg_set_syscall_gadget(void *p);
+
 #ifdef __cplusplus
 }
 #endif

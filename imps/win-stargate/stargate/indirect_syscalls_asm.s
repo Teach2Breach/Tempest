@@ -20,11 +20,8 @@
 
 .data
 
-# Gadget address: points to `syscall; ret` (0F 05 C3) inside ntdll.
-# Set by C code (sg_init or sg_call_N) before calling a stub.
-.globl g_syscall_gadget
-g_syscall_gadget:
-    .quad 0
+# Gadget address lives in indirect_syscalls.c (RIP-relative jmp [rip+g_syscall_gadget]).
+.extern g_syscall_gadget
 
 # =====================================================================
 # Generic Indirect Syscall Stubs (.text section)

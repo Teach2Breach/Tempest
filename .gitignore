@@ -14,5 +14,6 @@ upgrade-plan.md
 gui_plan.md
 techplan.md
 imps/win-stargate/include/tempest_bootstrap.h
+imps/win-stargate/tools/gen_embedded_payload.c
 .cursor/rules
 note-to-self.md

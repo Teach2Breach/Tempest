@@ -3,4 +3,5 @@ Cargo.lock
 /bofs
 /cert
 *.bin
+aes_key.bin
 *.db

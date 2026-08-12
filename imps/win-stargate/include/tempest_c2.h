@@ -2,9 +2,7 @@
 #ifndef TEMPEST_C2_H
 #define TEMPEST_C2_H
 
-struct morpheus_ctx;
-
-/* morph: BM-T6001 Morpheus context (required for production C2; interval sleep). */
-void tempest_c2_run(struct morpheus_ctx *morph);
+/* sleep_ctx: PE = Morpheus (BM-T6001); PIC = Deferral Mosaic (BM-T6003). */
+void tempest_c2_run(void *sleep_ctx);
 
 #endif

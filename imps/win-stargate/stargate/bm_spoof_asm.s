@@ -31,16 +31,10 @@
 
 .data
 
-# Saved real RSP — restored after the gadget chain unwinds.
-.globl g_spoof_real_rsp
-g_spoof_real_rsp:
-    .quad 0
-
-# Synthetic stack RSP — set by build_synth_frames() before dispatch.
-# Points to the top of the synthetic frame chain.
-.globl g_spoof_synth_rsp
-g_spoof_synth_rsp:
-    .quad 0
+# Saved real RSP / synthetic RSP — defined in bm_spoof.c (RIP-relative).
+.extern g_spoof_real_rsp
+.extern g_spoof_synth_rsp
+.extern g_syscall_gadget
 
 # =====================================================================
 # Spoofed Dispatch (.text section)

@@ -65,7 +65,17 @@ pub async fn retrieve_all_out(
     Ok((body, max_id))
 }
 
-pub async fn build_imp(url: &str, token: &str, target: &str, target_ip: &str, target_port: &str, tsleep: &str, format: &str, jitter: &str) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
+pub async fn build_imp(
+    url: &str,
+    token: &str,
+    target: &str,
+    target_ip: &str,
+    target_port: &str,
+    tsleep: &str,
+    format: &str,
+    jitter: &str,
+    pic_c2_trace: bool,
+) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
     let url = format!("https://{}/build_imp", url);
     let client = ClientBuilder::new().danger_accept_invalid_certs(true).build()?;
     let mut headers = HeaderMap::new();
@@ -76,6 +86,12 @@ pub async fn build_imp(url: &str, token: &str, target: &str, target_ip: &str, ta
     headers.insert(HeaderName::from_static("x-tsleep"), HeaderValue::from_str(tsleep)?);
     headers.insert(HeaderName::from_static("x-format"), HeaderValue::from_str(format)?);
     headers.insert(HeaderName::from_static("x-jitter"), HeaderValue::from_str(jitter)?);
+    if pic_c2_trace {
+        headers.insert(
+            HeaderName::from_static("x-pic-c2-trace"),
+            HeaderValue::from_static("1"),
+        );
+    }
     let res = client.post(&url).headers(headers).send().await?;
     if !res.status().is_success() { return Err(format!("Server returned error: {}", res.status()).into()); }
     let bytes = res.bytes().await?;

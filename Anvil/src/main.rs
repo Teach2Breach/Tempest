@@ -59,18 +59,19 @@ async fn main() -> std::io::Result<()> {
         .merge(File::with_name("config"))
         .expect("Failed to open configuration file");
 
-    let private_key: String = settings
-        .get("cert.private_key")
-        .expect("Failed to get private_key");
-    let certificate: String = settings
-        .get("cert.certificate")
-        .expect("Failed to get certificate");
+    let private_key: String = env::var("PRIVATE_KEY").unwrap_or_else(|_| {
+        settings
+            .get("cert.private_key")
+            .expect("Failed to get private_key (set PRIVATE_KEY or cert.private_key in config.toml)")
+    });
+    let certificate: String = env::var("CERTIFICATE").unwrap_or_else(|_| {
+        settings
+            .get("cert.certificate")
+            .expect("Failed to get certificate (set CERTIFICATE or cert.certificate in config.toml)")
+    });
 
-    env::set_var("PRIVATE_KEY", private_key);
-    env::set_var("CERTIFICATE", certificate);
-
-    let private_key = env::var("PRIVATE_KEY").expect("PRIVATE_KEY must be set");
-    let certificate = env::var("CERTIFICATE").expect("CERTIFICATE must be set");
+    env::set_var("PRIVATE_KEY", &private_key);
+    env::set_var("CERTIFICATE", &certificate);
 
     let private_key_clone = private_key.clone();
     let certificate_clone = certificate.clone();
@@ -121,12 +122,22 @@ async fn main() -> std::io::Result<()> {
         .unwrap_or_else(|_| String::from("nightly-2025-03-03"));
     std::env::set_var("RUSTUP_TOOLCHAIN", &build_toolchain);
 
-    let implant_port: u16 = settings
-        .get("server.implant_port")
-        .expect("Failed to get implant_port from config");
-    let conduit_port: u16 = settings
-        .get("server.conduit_port")
-        .expect("Failed to get conduit_port from config");
+    let implant_port: u16 = env::var("IMPLANT_PORT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_else(|| {
+            settings
+                .get("server.implant_port")
+                .expect("Failed to get implant_port from config")
+        });
+    let conduit_port: u16 = env::var("CONDUIT_PORT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_else(|| {
+            settings
+                .get("server.conduit_port")
+                .expect("Failed to get conduit_port from config")
+        });
 
     let outputs_max_rows: u64 = settings
         .get_int("server.outputs_max_rows")
@@ -135,6 +146,8 @@ async fn main() -> std::io::Result<()> {
     std::env::set_var("TEMPEST_OUTPUTS_MAX_ROWS", outputs_max_rows.to_string());
 
     use std::thread;
+
+    println!("Anvil listening: implants 0.0.0.0:{}  operators 0.0.0.0:{}", implant_port, conduit_port);
 
     let db_443 = Arc::clone(&db);
     let aes_key_implant = aes_key_b64.clone();

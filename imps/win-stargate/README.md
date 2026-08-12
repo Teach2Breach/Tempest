@@ -16,20 +16,34 @@ Requires `x86_64-w64-mingw32-gcc` and `make` on `PATH`.
 
 ## Test shellcode on a Windows lab machine
 
-The flat `beacon.bin` is **`.rdata` + `.text` + `.data`** bytes in that order. The CPU entry (`shellcode_entry`) is **not** at file offset 0 — it lines up with the start of **`.text`** after the **`.rdata`** prefix. The build writes **`beacon.bin.entry_offset`** (one line, hex) so the harness knows where to jump.
+`beacon.bin` is a **position-independent** flat image: `objcopy` of the merged `.text` (short `jmp` at offset 0 to `shellcode_entry`). Injectors that map at an OS-chosen base and run **offset 0** are the intended consumers — including [hollow_rs](https://github.com/Teach2Breach/hollow_rs/blob/main/src/lib.rs) and **windows_noldr** `inject` (`NtMapViewOfSection` + `NtQueueApcThread` + `NtAlertResumeThread`).
 
-1. Build `make raw` (or copy artifacts from a build host).
-2. Copy **`tools/shellcode_runner.exe`**, **`beacon.bin`**, and **`beacon.bin.entry_offset`** to the lab machine (same folder).
+The blob writes `.data`/`.bss` at runtime. **windows_noldr** maps the remote view **RX**; `shellcode_entry` calls `NtProtectVirtualMemory` to **RWX** on its own mapping before C2. Lab **`shellcode_runner.exe`** allocates **RW**, copies, then **`VirtualProtectEx` RWX**, and uses **`CreateRemoteThread`** (Notepad is not alertable, so a raw **`QueueUserAPC`** often never runs).
+
+Sleep: **PE** (`beacon.exe` / `beacon.dll`) uses **BM-T6001 Morpheus** (direct NT syscalls). **PIC** (`beacon.bin`) uses **BM-T6003 Deferral Mosaic** (hashed ntdll/kernel32 waits — timer-queue, keyed event, `NtWaitForSingleObject` with timeout). Neither path calls kernel32 `Sleep`.
+
+**`shellcode_runner.exe`** (host **`notepad.exe`** suspended): **`VirtualAllocEx(NULL)`** → **`WriteProcessMemory`** → **`VirtualProtectEx` RWX** → **`CreateRemoteThread`(base+0)** → **`ResumeThread`**.
+
+1. Build **`make raw`** and **`make runner`** (or copy artifacts).
+2. Copy **`tools\shellcode_runner.exe`** and **`beacon.bin`**.
 3. Run:
 
 ```text
 tools\shellcode_runner.exe beacon.bin
 ```
 
-Optional arguments: **`entry_offset`** (hex) if you have no sidecar file, then **`alloc_base`** (hex) if you want to try mapping at a specific virtual address (e.g. the PE default `0x0000014000000000`). **Load address** only matters if the compiled blob still contains **absolute** references to a fixed image base; a fully PIC blob works at any `VirtualAlloc` address — if it crashes at `NULL` hint but works with a specific base, you have a base-relocation issue to fix in the link step.
+Optional: pass another path as **`argv[1]`**. There are no sidecars or hex offsets.
 
-The runner prints whether execution **returned**; many implants never return to the caller.
+### Raw (`beacon.bin`) silent failures vs EXE
+
+Production **`make raw`** uses **`PIC_C2_TRACE=0`**, so WinHTTP and registration errors do not appear on the console (the EXE build emits **`[tempest c2]`** on stderr by default). If **`shellcode_runner`** runs but the server never sees a check-in, enable trace and use **Sysinternals DbgView** (Capture Win32):
+
+- **Operator GUI (*conduit_gui*)**: Build dialog → check **“PIC C2 trace (windows raw only — Sysinternals DbgView)”**, set format to **`raw`**, build — the server passes **`PIC_C2_TRACE=1`** into `make raw`.
+- **CLI / curl**: `POST /build_imp` with header **`X-Pic-C2-Trace: 1`** (only affects **`X-Format: raw`**).
+- **Manual on build host**: `make raw PIC_C2_TRACE=1` with the same **`AES_KEY`** / **`SERVER`** / … env as Anvil.
+
+Ship artifacts built with **`PIC_C2_TRACE=0`** (default).
 
 ## Threading and parity (vs. `windows_noldr`)
 
-The C beacon is **single-threaded** for the C2 loop and task execution so far. The legacy Rust implant (`imps/windows_noldr`, `proto.rs`) already had a **second thread** for **SOCKS** (`mpsc` + `thread::spawn`) plus many tasks: `whoami`, `ipconfig`, `ps`, shell fs (`cd`/`pwd`/`ls`/`catfile`), `getfile`/`sendfile`, `cmd`/`pwsh`, `wmi`, `bof`, `inject`, `runpe`, `socks`, live `sleep`, `kill`. When you add those here, expect to **spawn worker threads** for anything that blocks (SOCKS, long jobs) and keep the **main thread** on the HTTP poll, or use explicit queuing. **Do not** share `g_c2coll` / Morpheus context across threads without synchronization.
+The C beacon is **single-threaded** for the C2 loop and task execution so far. The legacy Rust implant (`imps/windows_noldr`, `proto.rs`) already had a **second thread** for **SOCKS** (`mpsc` + `thread::spawn`) plus many tasks: `whoami`, `ipconfig`, `ps`, shell fs (`cd`/`pwd`/`ls`/`catfile`), `getfile`/`sendfile`, `cmd`/`pwsh`, `wmi`, `bof`, `inject`, `runpe`, `socks`, live `sleep`, `kill`. When you add those here, expect to **spawn worker threads** for anything that blocks (SOCKS, long jobs) and keep the **main thread** on the HTTP poll, or use explicit queuing. **Do not** share `g_c2coll` / Morpheus / Mosaic context across threads without synchronization.

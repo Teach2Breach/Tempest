@@ -544,6 +544,18 @@ pub async fn build_imp(req: HttpRequest, db: Data<Arc<Mutex<Connection>>>) -> im
                 }
             };
 
+            let pic_c2_trace = req
+                .headers()
+                .get("X-Pic-C2-Trace")
+                .and_then(|h| h.to_str().ok())
+                .map(|s| {
+                    matches!(
+                        s.trim().to_ascii_lowercase().as_str(),
+                        "1" | "true" | "yes" | "on"
+                    )
+                })
+                .unwrap_or(false);
+
             // Verify the token
             if verify_token(&token, &db).await {
                 //if the token is valid, build the imp based on the target OS
@@ -585,6 +597,9 @@ pub async fn build_imp(req: HttpRequest, db: Data<Arc<Mutex<Connection>>>) -> im
                 println!("format: {}", format);
                 println!("jitter: {}", std::env::var("JITTER").unwrap());
                 println!("X-Target: {target}");
+                if pic_c2_trace {
+                    println!("X-Pic-C2-Trace: enabled (win-stargate raw → make PIC_C2_TRACE=1)");
+                }
 
                 // Windows: C / MinGW — sources under `imps/win-stargate` (see TEMPEST_WIN_STARGATE_DIR).
                 let tnorm = target.to_ascii_lowercase();
@@ -648,10 +663,18 @@ pub async fn build_imp(req: HttpRequest, db: Data<Arc<Mutex<Connection>>>) -> im
                             .arg(format!("PORT={target_port}"))
                             .arg(format!("SLEEP={tsleep}"))
                             .arg(format!("JITTER={jitter}"))
-                            .arg(format!("UUID={imp_secret}"))
-                            .arg(&make_target);
+                            .arg(format!("UUID={imp_secret}"));
+                        if format.as_str() == "raw" && pic_c2_trace {
+                            c.arg("PIC_C2_TRACE=1");
+                        }
+                        c.arg(&make_target);
                         eprintln!(
-                            "build_imp: win-stargate make: SERVER={target_ip} PORT={target_port} SLEEP={tsleep} JITTER={jitter} target={make_target} cwd={}",
+                            "build_imp: win-stargate make: SERVER={target_ip} PORT={target_port} SLEEP={tsleep} JITTER={jitter} target={make_target} PIC_C2_TRACE={} cwd={}",
+                            if format.as_str() == "raw" && pic_c2_trace {
+                                "1"
+                            } else {
+                                "0"
+                            },
                             win_stargate_dir.display()
                         );
                         c

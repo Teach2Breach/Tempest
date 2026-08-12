@@ -1,33 +1,43 @@
 /*
- * Monolithic shellcode: merge sections, discard PE import tables & metadata.
- * After link: objcopy -O binary -j .text → raw opcode blob (no MZ).
- * Adapted from techniques/BM-PA1001/code/c/pic.ld
+ * BM-PA1001-style PIC linker script — single PE `.text` (code + rodata + data + bss; idata discarded).
+ * `__data_start__` marks the writable tail inside the merged section (maps / debugging).
+ * VMA preamble + `.rdata$.refptr*` ordering satisfy mingw REL32 from code to refptr slots.
  */
-SECTIONS {
-    .text : {
-        *(.text$A)
-        *(.text)
-        *(.text.*)
-        *(.rdata)
-        *(.rdata.*)
-        *(.data)
-        *(.data.*)
-        *(.bss)
-        *(.bss.*)
-    }
-    /DISCARD/ : {
-        *(.comment)
-        *(.drectve)
-        *(.pdata)
-        *(.xdata)
-        *(.reloc)
-        *(.eh_frame)
-        *(.eh_frame_hdr)
-        *(.ctors)
-        *(.dtors)
-        *(.CRT*)
-        *(.tls)
-        *(.debug*)
-        *(.idata*)
-    }
+OUTPUT_FORMAT(pei-x86-64)
+SECTIONS
+{
+  . = SIZEOF_HEADERS;
+  . = ALIGN(__section_alignment__);
+  .text 0x140000000 + (__section_alignment__ < 0x1000 ? . : __section_alignment__) :
+  {
+    __pic_image_start = .;
+    *(.text$A)
+    *(.text)
+    *(.text.*)
+    /* Refptr slots must sit next to code so IMAGE_REL_AMD64_REL32 can reach (mingw). */
+    *(.rdata$.refptr*)
+    *(.rdata)
+    *(.rdata.*)
+    __data_start__ = .;
+    *(.data)
+    *(.data.*)
+    *(.bss)
+    *(.bss.*)
+    __pic_image_end = .;
+  }
+  /DISCARD/ : {
+    *(.comment)
+    *(.drectve)
+    *(.pdata)
+    *(.xdata)
+    *(.reloc)
+    *(.eh_frame)
+    *(.eh_frame_hdr)
+    *(.ctors)
+    *(.dtors)
+    *(.CRT*)
+    *(.tls)
+    *(.debug*)
+    *(.idata*)
+  }
 }

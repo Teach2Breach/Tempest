@@ -3,12 +3,14 @@
 anvil is the actual c2 server. It is currently setup only for https communications, both for the implant and client operators. In the future I'll add websockets and other options. Currently the default port is 443. You can change it in the code, but its probably going to be 443 for most uses. In the future I'll add the ability to set flags to specify a port for implants to connect back to, as well as allowing http for cases when you want to let a redirector handle the TLS and force https with your http server. (more info on that when its added)
 ## setup
 
-Since anvil uses https, you'll need SSL/TLS certificates to serve up. For now, this is done by generating your own certificate files, but I'll look at other methods in the future. For testing purposes, here is how to generate the certificates, which should be specified as a full path in the config.toml file and look something like this:
+Since anvil uses https, you'll need SSL/TLS certificates to serve up. For now, this is done by generating your own certificate files, but I'll look at other methods in the future. For testing purposes, here is how to generate the certificates. Put full paths in `config.toml` under `[cert]`, **or** override without editing git-tracked config:
 
 ```
-CERTIFICATE=/home/kirk/anvil/cert/cert.pem 
-PRIVATE_KEY=/home/kirk/anvil/cert/key.pem
+export PRIVATE_KEY=/home/kirk/anvil/cert/key.pem
+export CERTIFICATE=/home/kirk/anvil/cert/cert.pem
 ```
+
+Env vars win over `config.toml` when set.
 
 set the operator username and password to connect to the server also in config.toml under [users]. default is forge:forge. please change it.
 
@@ -59,7 +61,7 @@ sudo setcap 'cap_net_bind_service=+ep' ./target/release/anvil (allows anvil to b
 ./target/release/anvil (run without sudo)
 ```
 
-**Process current directory:** `POST /build_imp` runs `make` with working directory **`../imps/win-stargate`** relative to Anvil’s **current working directory** (not relative to the `anvil` binary file). Typical layout: run from the repo’s **`Anvil/`** directory so `../imps/win-stargate` resolves to the vendored C implant. If you copy only the `anvil` binary elsewhere, either (1) also copy or clone **`imps/win-stargate/`** into the expected place, or (2) set **`TEMPEST_WIN_STARGATE_DIR`** to the absolute path of that folder. The server logs `build_imp: make cwd = ...` on each Windows build so you can confirm the path. On success, it reads **`beacon.exe`** / **`beacon.dll`** / **`beacon.bin`** from that same directory and returns the bytes in the HTTP response (the GUI saves the file under **its** working directory, e.g. `windows_stargate.exe`).
+**Process current directory:** `POST /build_imp` runs `make` with working directory **`../imps/win-stargate`** relative to Anvil’s **current working directory** (not relative to the `anvil` binary file). Typical layout: run from the repo’s **`Anvil/`** directory so `../imps/win-stargate` resolves to the vendored C implant. If you copy only the `anvil` binary elsewhere, either (1) also copy or clone **`imps/win-stargate/`** into the expected place, or (2) set **`TEMPEST_WIN_STARGATE_DIR`** to the absolute path of that folder. The server logs `build_imp: make cwd = ...` on each Windows build so you can confirm the path. On success, it reads **`beacon.exe`** / **`beacon.dll`** / **`beacon.bin`** from that same directory and returns the bytes in the HTTP response (the GUI saves the file under **its** working directory, e.g. `windows_stargate.exe`). Optional header **`X-Pic-C2-Trace: 1`** with **`X-Format: raw`** adds **`PIC_C2_TRACE=1`** to the win-stargate `make` invocation (DbgView diagnostics for raw PIC — see `imps/win-stargate/README.md`).
 
 ## Building Implants
 

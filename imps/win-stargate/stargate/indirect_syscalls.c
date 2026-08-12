@@ -14,6 +14,18 @@
 #include "loader.h"
 #include "syscalls.h"
 
+void *g_syscall_gadget __attribute__((visibility("hidden"))) = NULL;
+
+void sg_set_syscall_gadget(void *p)
+{
+    g_syscall_gadget = p;
+}
+
+void *sg_get_syscall_gadget(void)
+{
+    return g_syscall_gadget;
+}
+
 /* ========================================================================
  * PE Parsing Helpers (inline, no imports)
  * ======================================================================== */

@@ -10,6 +10,7 @@ pub fn BuildDialog(on_close: EventHandler<()>, base_url: String, token: Option<S
     let mut target_port = use_signal(|| String::from("443"));
     let mut tsleep = use_signal(|| String::from("3"));
     let mut jitter = use_signal(|| String::from("10"));
+    let mut pic_c2_trace = use_signal(|| false);
     let status_msg = use_signal(|| None as Option<String>);
     let is_building = use_signal(|| false);
 
@@ -31,9 +32,14 @@ pub fn BuildDialog(on_close: EventHandler<()>, base_url: String, token: Option<S
             let port = target_port.read().clone();
             let slp = tsleep.read().clone();
             let jit = jitter.read().clone();
+            let dbg_pic_trace = *pic_c2_trace.read();
             building.set(true);
             spawn(async move {
-                match crate::services::api::build_imp(&base_clone, &token_str, &tgt, &ip, &port, &slp, &fmt, &jit).await {
+                match crate::services::api::build_imp(
+                    &base_clone, &token_str, &tgt, &ip, &port, &slp, &fmt, &jit, dbg_pic_trace,
+                )
+                .await
+                {
                     Ok(bytes) => {
                         // Derive filename similarly to TUI rules
                         let filename = if tgt.contains("windows") {
@@ -82,6 +88,15 @@ pub fn BuildDialog(on_close: EventHandler<()>, base_url: String, token: Option<S
                 div { class: "field", label { "Target Port" } input { value: "{target_port}", oninput: move |e| target_port.set(e.value()) } }
                 div { class: "field", label { "Sleep (s)" } input { value: "{tsleep}", oninput: move |e| tsleep.set(e.value()) } }
                 div { class: "field", label { "Jitter (%)" } input { value: "{jitter}", oninput: move |e| jitter.set(e.value()) } }
+                div { class: "field",
+                    label { r#for: "pic_c2_trace", "PIC C2 trace (windows raw only — Sysinternals DbgView)" }
+                    input {
+                        id: "pic_c2_trace",
+                        r#type: "checkbox",
+                        checked: *pic_c2_trace.read(),
+                        onchange: move |evt| pic_c2_trace.set(evt.checked()),
+                    }
+                }
                 if let Some(msg) = &*status_msg.read() { div { class: "status", "{msg}" } }
                 div { class: "actions",
                     button { onclick: move |_| on_close.call(()), "Close" }
